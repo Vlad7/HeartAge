@@ -1,0 +1,5 @@
+Install minGW
+
+cd D:\Projects\Moon\src
+
+g++ main.cpp Bmp.cpp Sphere.cpp  glut32.lib -lopengl32 -lglu32 -o Sphere

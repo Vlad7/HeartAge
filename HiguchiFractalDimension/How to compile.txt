@@ -1,0 +1,7 @@
+Install minGW
+
+cd D:\Projects\ECGHiguchi\HiguchiFractalDimension
+
+
+gcc -shared hfd.c -o libhfd.so -lm -fPIC
+g++ main.cpp Bmp.cpp Sphere.cpp  glut32.lib -lopengl32 -lglu32 -o Sphere
