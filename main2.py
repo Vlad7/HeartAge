@@ -1779,7 +1779,7 @@ def write_number_of_ECGs_per_age_range_for_both_HFD(sex, ecg_count_per_each_age_
                                     quotechar='|', quoting=csv.QUOTE_MINIMAL)
 
         for age_group in ecg_count_per_each_age_group.keys():
-            spamwriter.writerow([age_group, ecg_count_per_each_age_group[age_group]])
+            spamwriter.writerow([age_groups[age_group], ecg_count_per_each_age_group[age_group]])
 """            
 def write_number_of_ECGs_per_age_range_for_both_HFD(sex, ecg_count_per_each_age_group, type_of_ecg_cut):
     with open('number_of_ECGs_per_each_age_range_' + type_of_ecg_cut.name + '_cut.csv', 'w', newline='') as csvfile:

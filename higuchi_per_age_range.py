@@ -286,6 +286,24 @@ def age_range_agregation (id_to_hfd, id_ageRangeIndex_dict):
 
     return age_to_mean_hfd
 
+def age_range_agregation_count (id_to_hfd, id_ageRangeIndex_dict):
+    """Create {'age_range': mean_hfd'} dictionary"""
+
+    print(id_ageRangeIndex_dict)
+
+    # Сначала группируем HFD по age_range
+    age_to_hfds = defaultdict(list)
+    for id_, age_range in id_ageRangeIndex_dict.items():
+        if id_ in id_to_hfd:  # проверка, чтобы id существовал в HFD
+            age_to_hfds[age_range].append(id_to_hfd[id_])
+
+    # Затем считаем среднее для каждого age_range
+    age_to_count = {age: len(hfds) for age, hfds in age_to_hfds.items()}
+
+    print(age_to_count)
+
+    return age_to_count
+
 if __name__ == '__main__':
 
     #create_id_to_hfd_file()
@@ -301,13 +319,16 @@ if __name__ == '__main__':
 
     male_id_ageRangeIndex_dict, female_id_ageRangeIndex_dict = m2.get_age_ranges_for_male_and_female(keys, male_ids, female_ids)
 
-    male_age_range_to_mean_hfd = age_range_agregation(id_to_hfd, male_id_ageRangeIndex_dict)
-    female_age_range_to_mean_hfd = age_range_agregation(id_to_hfd, female_id_ageRangeIndex_dict)
+    #ale_age_range_to_mean_hfd = age_range_agregation(id_to_hfd, male_id_ageRangeIndex_dict)
+    #female_age_range_to_mean_hfd = age_range_agregation(id_to_hfd, female_id_ageRangeIndex_dict)
 
+    male_age_range_to_count = age_range_agregation_count(id_to_hfd, male_id_ageRangeIndex_dict)
+    female_age_range_to_count = age_range_agregation_count(id_to_hfd, female_id_ageRangeIndex_dict)
+    m2.write_number_of_ECGs_per_age_range_for_both_HFD("male", male_age_range_to_count)
+    m2.write_number_of_ECGs_per_age_range_for_both_HFD("female", female_age_range_to_count)
 
-
-    write_average_HFD_values_for_each_age_range("male", male_age_range_to_mean_hfd)
-    write_average_HFD_values_for_each_age_range("female", female_age_range_to_mean_hfd)
+    #write_average_HFD_values_for_each_age_range("male", male_age_range_to_mean_hfd)
+    #write_average_HFD_values_for_each_age_range("female", female_age_range_to_mean_hfd)
     #write_average_HFD_values_for_each_age_range("both_sexes", age_to_mean_hfd)
 
 
