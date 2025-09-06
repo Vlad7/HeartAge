@@ -8,7 +8,7 @@ from collections import defaultdict
 import numpy as np
 
 #Folder with files in each there is cleaned_signal time series
-cleaned_signal_folder="cleaned_signal"
+cleaned_signal_folder="../datasets/autonomic-aging-a-dataset-to-quantify-changes-of-cardiovascular-autonomic-function-during-healthy-aging-1.0.0/cleaned_signal"
 
 #Folder with files in each there is r_peaks time series
 r_peaks_folder="r_peaks"
