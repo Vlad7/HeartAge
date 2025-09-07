@@ -12,7 +12,11 @@ from scipy import stats
 
 
 #Folder with files in each there is cleaned_signal time series
+<<<<<<< HEAD
 cleaned_signal_folder="../dataset/autonomic-aging-a-dataset-to-quantify-changes-of-cardiovascular-autonomic-function-during-healthy-aging-1.0.0/cleaned_signal"
+=======
+cleaned_signal_folder="../datasets/autonomic-aging-a-dataset-to-quantify-changes-of-cardiovascular-autonomic-function-during-healthy-aging-1.0.0/cleaned_signal"
+>>>>>>> 1432ed2d6a436909ae1c7e552f7104969b943b81
 
 #Folder with files in each there is r_peaks time series
 r_peaks_folder="r_peaks"
