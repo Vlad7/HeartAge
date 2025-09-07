@@ -12,11 +12,9 @@ from scipy import stats
 
 
 #Folder with files in each there is cleaned_signal time series
-<<<<<<< HEAD
+
 cleaned_signal_folder="../dataset/autonomic-aging-a-dataset-to-quantify-changes-of-cardiovascular-autonomic-function-during-healthy-aging-1.0.0/cleaned_signal"
-=======
-cleaned_signal_folder="../datasets/autonomic-aging-a-dataset-to-quantify-changes-of-cardiovascular-autonomic-function-during-healthy-aging-1.0.0/cleaned_signal"
->>>>>>> 1432ed2d6a436909ae1c7e552f7104969b943b81
+
 
 #Folder with files in each there is r_peaks time series
 r_peaks_folder="r_peaks"
@@ -89,44 +87,37 @@ def extract_from_file_cleaned_signal_time_series(file):
 
 
 
-def extract_from_file_r_peaks_time_series(cleaned_signal_file, r_peaks_file):
-    """Extract from files RR intervals time series
+def extract_from_file_r_peaks_time_series(id, r_peaks_file):
+    """Extract from file R peaks time series
 
-        input: files - file names
-        output: rr_time_series_dictionary - dictionary with id as key and list of RR-intervals as value"""
+        input: id - corresponding to clean and r_peaks
+        output: r_peaks - list with R-peaks as value"""
 
-    import re
 
-    filename = cleaned_signal_file
 
-    # Используем регулярное выражение для извлечения числового индекса
-    match = re.search(r'_(\d+)\.txt', filename)
-    if match:
-        index = match.group(1)
+    if index in r_peaks_file:
+        #print("Индекс:", index)
 
-        if index in r_peaks_file:
-            #print("Индекс:", index)
+        file_path = r_peaks_folder + "/" + r_peaks_file
+        # Чтение файла, начиная со второй строки
+        with open(file_path, "r") as file:
+            # Пропускаем первую строку
+            next(file)
 
-            file_path = r_peaks_folder + "/" + r_peaks_file
-            # Чтение файла, начиная со второй строки
-            with open(file_path, "r") as file:
-                # Пропускаем первую строку
-                next(file)
-
-                # Читаем остальные строки
-                r_peaks = [line.strip() for line in file]
+            # Читаем остальные строки
+            r_peaks = [line.strip() for line in file]
 
         # Вывод значений
         #for rr in rr_intervals:
         #    print(rr)
 
-                r_peaks = [int(float(x)) for x in r_peaks]
-                #print(rr_intervals)
-                return r_peaks
+            r_peaks = [int(float(x)) for x in r_peaks]
+            #print(rr_intervals)
+            return r_peaks
 
-        else:
-            print("Индекс не найден")
-            return None
+    else:
+        print("Индекс не найден")
+        return None
 
 
 
@@ -216,7 +207,7 @@ def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray, n_cycles: int = 1
 
     # формируем пары границ по R-пикам: [R_i, R_{i+n_cycles}]
     starts = np.arange(0, rpeaks_idx.size - n_cycles - 0, step_cycles) #!!! 180 max
-    hfd_vals = []
+    info_vals = []
     centers = []
     #print(starts)
     for i in starts:
@@ -226,12 +217,12 @@ def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray, n_cycles: int = 1
         #print("a: {0}, b: {1}".format(a,b))
         if b - a < 2:
             #print("less than 2")
-            hfd_vals.append(np.nan)
+            info_vals.append([np.nan, np.nan, np.nan, np.nan, np.nan])
             centers.append((a + b) // 2)
             continue
         seg = x[a:b]
         #print("Длина сегмента: "+str(len(seg)))
-        hfd_vals.append(higuchi_fd(seg, kmax=kmax))
+        info_vals.append(higuchi_fd(seg, kmax=kmax))
         centers.append((a + b) // 2)
     return np.array(centers), np.array(hfd_vals)
 
@@ -273,6 +264,7 @@ def write_HFD_calculated_value_to_csv(sex, id, info):
             # info[i][1] - i-th window b parameter
             # info[i][2] - i-th window D parameter
             # info[i][3] - i-th window R_square parameter
+            # info[i][3] - i-th window p-value parameter
             list += [f"{info[i][0]:.3f}", f"{info[i][1]:.3f}", f"{info[i][2]:.3f}", f"{info[i][3]:.3f}", f"{info[i][4]:.3f}"]
         spamwriter.writerow(list)
 
@@ -283,21 +275,67 @@ def write_HFD_calculated_value_to_csv(sex, id, info):
         """, RECORD.DATABASE[type_of_ecg_cut][key].Sex,
                                  RECORD.DATABASE[type_of_ecg_cut][key].BMI]"""
 
-def create_id_to_hfd_file():
-    cleaned_signals_files = list_files_with_cleaned_signal()
-    r_peaks_files = list_files_with_r_peaks()
+def extract_id_from_filename(filename):
+    # Используем регулярное выражение для извлечения числового индекса
+    match = re.search(r'_(\d+)\.txt', filename)
+    if match:
+        index = match.group(1)
+        return index
 
-    if len(cleaned_signals_files) != len(r_peaks_files):
-        print("ERROR!")
+def find_maximum_id_in_full_ECG_id_to_info_file():
+    """If you open csv file with full ECG id to info parameters, it finds id of row with maximum id
 
-    # Dictionary with HFD for each id
-    # HFD = {}
+        output: id
+    """
 
-    for cleaned_signal_file, r_peaks_file in zip(cleaned_signals_files, r_peaks_files):
-        id, cleaned_time_series = extract_from_file_cleaned_signal_time_series(cleaned_signal_file)
-        peaks = extract_from_file_r_peaks_time_series(cleaned_signal_file, r_peaks_file)
+    file_path = 'output/both_sexes_HFD_all_ECG_calculated_separeted_windows.csv'
 
-        normalized = zscore_normalize(cleaned_time_series)
+    max_id = -float("inf")
+    with open(file_path, newline="", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        next(reader)  # пропускаем заголовок, если он есть
+        for row in reader:
+            try:
+                value = int(row[0])
+                if value > max_id:
+                    max_id = value
+            except ValueError:
+                continue
+
+    print("Максимальный id:", max_id)
+
+    return max_id.lstrip("0")  # '1034' (без нулей впереди)
+
+def create_full_ECG_id_to_info_file():
+
+    try:
+        cleaned_signals_filenames = list_files_with_cleaned_signal()    # Files of cleaned and r_peaks must be count equally
+        r_peaks_filenames = list_files_with_r_peaks()                   # and have corresponding id's.
+
+        ids_csf = [extract_id_from_filename(filename) for filename in cleaned_signals_filenames]  # Extract corresponding
+                                                                                              # id's for
+                                                                                              # cleaned_signals_filenames
+                                                                                              # above.
+        ids_rp = [extract_id_from_filename(filename) for filename in r_peaks_filenames] # Extract corresponding
+                                                                                    # id's for
+                                                                                    # r_peaks_filenames
+                                                                                    # above.
+        if ids_csf != ids_rp:
+            raise FileNotFoundError("Error! Filenames of cleaned signals and r-peaks must be corresponding!")
+    except NameError as e:
+        print("NameError:", e)
+
+    min_id = find_maximum_id_in_full_ECG_id_to_info_file()
+
+
+    # HFD = {} # Dictionary with HFD for each id
+
+    for i in range(min_id, len(ids), 1):
+        id = ids[i]
+        _, cleaned_time_series = extract_from_file_cleaned_signal_time_series(cleaned_signal_file[i])
+        peaks = extract_from_file_r_peaks_time_series(cleaned_signal_file[i], r_peaks_file[i])
+
+        normalized_cleaned = zscore_normalize(cleaned_time_series)
 
         #  Видалити значення менші нуля на початку peaks
         while peaks and peaks[0] < 0:
@@ -317,7 +355,7 @@ def create_id_to_hfd_file():
         # Тут закінчив.
 
         #Firstly kmax=1500, step_cycles = 20
-        centers_idx, info = windowed_hfd_cycles(normalized, selected_R_peak_cycles, n_cycles=100, step_cycles=50,
+        centers_idx, info = windowed_hfd_cycles(normalized_cleaned, selected_R_peak_cycles, n_cycles=100, step_cycles=50,
                                                kmax=10000)
 
         #info - list with lists with [k, b, D, R_score]
@@ -386,7 +424,7 @@ def age_range_agregation_count (id_to_hfd, id_ageRangeIndex_dict):
 
 if __name__ == '__main__':
 
-    create_id_to_hfd_file()
+    create_full_ECG_id_to_info_file()
     """
     id_to_hfd = load_id_to_hfd()
 
