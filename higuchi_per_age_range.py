@@ -5,10 +5,14 @@ import re
 import os
 import csv
 from collections import defaultdict
+import matplotlib.pyplot as plt
+from sklearn.metrics import r2_score
 import numpy as np
+from scipy import stats
+
 
 #Folder with files in each there is cleaned_signal time series
-cleaned_signal_folder="cleaned_signal"
+cleaned_signal_folder="../dataset/autonomic-aging-a-dataset-to-quantify-changes-of-cardiovascular-autonomic-function-during-healthy-aging-1.0.0/cleaned_signal"
 
 #Folder with files in each there is r_peaks time series
 r_peaks_folder="r_peaks"
@@ -120,7 +124,7 @@ def extract_from_file_r_peaks_time_series(cleaned_signal_file, r_peaks_file):
             print("Индекс не найден")
             return None
 
-import numpy as np
+
 
 def zscore_normalize(x):
     mu = np.mean(x)
@@ -132,9 +136,64 @@ def zscore_normalize(x):
 
 
 def higuchi_fd(seg, kmax):
-    HFD = HiguchiFractalDimension.hfd(seg, opt=True,
-                                        k_max=kmax)
-    return HFD
+    #HFD = HiguchiFractalDimension.hfd(seg, opt=True,
+    #                                    k_max=
+    k, L = HiguchiFractalDimension.curve_length(seg, opt=True, k_max=kmax)
+
+
+    # строим регрессию log–log
+    x = np.log2(k)
+    y = np.log2(L)
+
+    res = stats.linregress(x, y)
+
+    k = res.slope
+    b = res.intercept
+    r2 = res.rvalue**2
+    p = res.pvalue
+
+    print(f"Slope = {k:.4f}")
+    print(f"Intercept = {b:.4f}")
+    print(f"R^2 = {r2:.4f}")
+    print(f"p-value for slope = {p:.4e}")
+
+    hfd = -k
+    print(f"Higuchi fractal dimension D = {hfd:.4f}")
+
+
+
+
+    # предсказанные значения по прямой
+    y_pred = k  * x + b
+
+
+
+
+
+
+
+
+
+
+
+    # Твои данные
+    # k = np.array([...])
+    # L = np.array([...])
+
+    # Визуализация
+    plt.figure(figsize=(7, 5))
+    plt.scatter(x, y, label="Data (log2)", color="blue")
+    plt.plot(x, y_pred, label=f"Fit: y = {k:.2f}x + {b:.2f}\nD = {hfd:.3f}, R² = {r2:.3f}, \np-value = {p}",  color="red")
+    plt.xlabel("log2(k)")
+    plt.ylabel("log2(L(k))")
+    plt.title("Higuchi Fractal Dimension (log-log)")
+    plt.legend()
+    plt.grid(True, ls="--", alpha=0.6)
+    plt.show()
+
+    return [k, b, hfd, r2, p]
+
+
 
 
 def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray, n_cycles: int = 100, step_cycles: int = 20, kmax: int = 10):
@@ -180,25 +239,40 @@ def write_average_HFD_values_for_each_age_range(sex, higuchi_average_per_each_ag
         for age_group in higuchi_average_per_each_age_group.keys():
             spamwriter.writerow([m2.age_groups[age_group], f"{higuchi_average_per_each_age_group[age_group]:.3f}".replace('.', ',')])
 
-def write_HFD_calculated_value_to_csv(sex, id, hfd):
+def write_HFD_calculated_value_to_csv(sex, id, info):
     # ECG 1 and 2 simulationusly
 
-    file_path = 'output/{0}_HFD_all_ECG_calculated.csv'.format(sex)
+    file_path = 'output/{0}_HFD_all_ECG_calculated_separeted_windows.csv'.format(sex)
 
     # Проверяем, существует ли файл и пуст ли он
     file_exists = os.path.isfile(file_path)
     file_empty = not file_exists or os.path.getsize(file_path) == 0
 
-    with open('output/{0}_HFD_all_ECG_calculated.csv'.format(sex), 'a', newline='') as csvfile:
+    with open(file_path, 'a', newline='') as csvfile:
         spamwriter = csv.writer(csvfile, delimiter=';',
                                 quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        windows_count = len(info)
         # Если файл пустой, пишем заголовок
         if file_empty:
-            spamwriter.writerow(['id', 'HFD'])
+
+            list = ['id']
+            for i in range(1, windows_count, 1):
+                list += ['k{0}'.format(i), 'b{0}'.format(i), 'D{0}'.format(i), 'R_score{0}'.format(i), 'p-value{0}'.format(i)]
+            spamwriter.writerow(list)
 
         # Добавляем новые строки
 
-        spamwriter.writerow([id, f"{hfd:.3f}"])
+
+        list = [id]
+        for i in range(0, windows_count, 1):
+            # info[i][0] - i-th window k parameter
+            # info[i][1] - i-th window b parameter
+            # info[i][2] - i-th window D parameter
+            # info[i][3] - i-th window R_square parameter
+            list += [f"{info[i][0]:.3f}", f"{info[i][1]:.3f}", f"{info[i][2]:.3f}", f"{info[i][3]:.3f}", f"{info[i][4]:.3f}"]
+        spamwriter.writerow(list)
+
+
 
 
 
@@ -211,7 +285,6 @@ def create_id_to_hfd_file():
 
     if len(cleaned_signals_files) != len(r_peaks_files):
         print("ERROR!")
-    # r_peaks = list_files_with_r_peaks()
 
     # Dictionary with HFD for each id
     # HFD = {}
@@ -239,16 +312,19 @@ def create_id_to_hfd_file():
         print("Peaks: " + str(len(selected_R_peak_cycles)))
         # Тут закінчив.
 
+        #Firstly kmax=1500, step_cycles = 20
+        centers_idx, info = windowed_hfd_cycles(normalized, selected_R_peak_cycles, n_cycles=100, step_cycles=50,
+                                               kmax=10000)
 
-        centers_idx, hfd = windowed_hfd_cycles(normalized, selected_R_peak_cycles, n_cycles=100, step_cycles=20,
-                                               kmax=1500)
-        hfd_mean = np.mean(hfd)
-        print(hfd_mean)
+        #info - list with lists with [k, b, D, R_score]
+        #hfd_mean = np.mean(hfd)
+        #print(hfd_mean)
 
         match = re.search(r'_(\d+)\.txt', cleaned_signal_file)
         id = match.group(1)
 
-        write_HFD_calculated_value_to_csv("both sexes", id, hfd_mean)
+        #write_HFD_calculated_value_to_csv("both sexes", id, hfd_mean)
+        write_HFD_calculated_value_to_csv("both sexes", id, info)
         # HFD[id] = hfd_mean
         # Для времени: t_centers = centers_idx / fs
 
@@ -306,7 +382,8 @@ def age_range_agregation_count (id_to_hfd, id_ageRangeIndex_dict):
 
 if __name__ == '__main__':
 
-    #create_id_to_hfd_file()
+    create_id_to_hfd_file()
+    """
     id_to_hfd = load_id_to_hfd()
 
     print(id_to_hfd)
@@ -330,6 +407,7 @@ if __name__ == '__main__':
     #write_average_HFD_values_for_each_age_range("male", male_age_range_to_mean_hfd)
     #write_average_HFD_values_for_each_age_range("female", female_age_range_to_mean_hfd)
     #write_average_HFD_values_for_each_age_range("both_sexes", age_to_mean_hfd)
+    """
 
 
 
