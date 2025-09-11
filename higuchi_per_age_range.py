@@ -95,7 +95,7 @@ def extract_from_file_r_peaks_time_series(id, r_peaks_file):
 
 
 
-    if index in r_peaks_file:
+    if id in r_peaks_file:
         #print("Индекс:", index)
 
         file_path = r_peaks_folder + "/" + r_peaks_file
@@ -130,10 +130,10 @@ def zscore_normalize(x):
 
 
 
-def higuchi_fd(seg, kmax):
+def higuchi_fd(seg, id, window, kmax):
     #HFD = HiguchiFractalDimension.hfd(seg, opt=True,
     #                                    k_max=
-    k, L = HiguchiFractalDimension.curve_length(seg, opt=True, k_max=kmax)
+    k, L = HiguchiFractalDimension.curve_length(seg, opt=True, num_k=50, k_max=kmax)
 
 
     # строим регрессию log–log
@@ -174,24 +174,35 @@ def higuchi_fd(seg, kmax):
     # Твои данные
     # k = np.array([...])
     # L = np.array([...])
-
+    """
     # Визуализация
     plt.figure(figsize=(7, 5))
     plt.scatter(x, y, label="Data (log2)", color="blue")
     plt.plot(x, y_pred, label=f"Fit: y = {k:.2f}x + {b:.2f}\nD = {hfd:.3f}, R² = {r2:.3f}, \np-value = {p}",  color="red")
     plt.xlabel("log2(k)")
     plt.ylabel("log2(L(k))")
-    plt.title("Higuchi Fractal Dimension (log-log)")
+    plt.title("Higuchi Fractal Dimension (log-log) Id = {0}, window = {1}".format(id, window))
     plt.legend()
     plt.grid(True, ls="--", alpha=0.6)
     plt.show()
+
+    y_pred = res.intercept + res.slope * x
+    residuals = y - y_pred
+
+    plt.scatter(x, residuals, color="blue")
+    plt.axhline(0, color="red", linestyle="--")
+    plt.xlabel("log2(k)")
+    plt.ylabel("Residuals")
+    plt.title("Residuals vs log2(k)")
+    plt.show()
+    """
 
     return [k, b, hfd, r2, p]
 
 
 
 
-def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray, n_cycles: int = 100, step_cycles: int = 20, kmax: int = 10):
+def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray, id, n_cycles: int = 100, step_cycles: int = 20, kmax: int = 10):
     """
     Оконный HFD по фиксированному числу сердечных циклов.
     rpeaks_idx: индексы R-пиков в отсчетах (возрастающий массив)
@@ -210,7 +221,7 @@ def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray, n_cycles: int = 1
     info_vals = []
     centers = []
     #print(starts)
-    for i in starts:
+    for i, w in zip(starts, range(0, len(starts),1)):
         #print(rpeaks_idx)
         a = rpeaks_idx[i]
         b = rpeaks_idx[i + n_cycles]
@@ -222,22 +233,22 @@ def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray, n_cycles: int = 1
             continue
         seg = x[a:b]
         #print("Длина сегмента: "+str(len(seg)))
-        info_vals.append(higuchi_fd(seg, kmax=kmax))
+        info_vals.append(higuchi_fd(seg, id, w + 1, kmax=kmax))
         centers.append((a + b) // 2)
-    return np.array(centers), np.array(hfd_vals)
+    return np.array(centers), np.array(info_vals)
 
-def write_average_HFD_values_for_each_age_range(sex, higuchi_average_per_each_age_group):
-    with open('output/{0}_HFD_average_of_ECG_per_age_range.csv'.format(sex), 'w', newline='') as csvfile:
+def write_average_HFD_values_for_each_age_range(sex, kmax, cycle_step, higuchi_average_per_each_age_group):
+    with open('output/{0}_HFD_average_of_ECG_per_age_range_kmax_{1}_cycle_step_{2}.csv'.format(sex, kmax, cycle_step), 'w', newline='') as csvfile:
         spamwriter = csv.writer(csvfile, delimiter=';',
                                     quotechar='|', quoting=csv.QUOTE_MINIMAL)
 
         for age_group in higuchi_average_per_each_age_group.keys():
             spamwriter.writerow([m2.age_groups[age_group], f"{higuchi_average_per_each_age_group[age_group]:.3f}".replace('.', ',')])
 
-def write_HFD_calculated_value_to_csv(sex, id, info):
+def write_HFD_calculated_value_to_csv(sex, id, info, kmax, step_cycle):
     # ECG 1 and 2 simulationusly
 
-    file_path = 'output/{0}_HFD_all_ECG_calculated_separeted_windows.csv'.format(sex)
+    file_path = 'output/{0}_HFD_all_ECG_calculated_kmax_is_{1}_step_cycle_{2}.csv'.format(sex, kmax, step_cycle)
 
     # Проверяем, существует ли файл и пуст ли он
     file_exists = os.path.isfile(file_path)
@@ -251,7 +262,7 @@ def write_HFD_calculated_value_to_csv(sex, id, info):
         if file_empty:
 
             list = ['id']
-            for i in range(1, windows_count, 1):
+            for i in range(1, windows_count + 1, 1):
                 list += ['k{0}'.format(i), 'b{0}'.format(i), 'D{0}'.format(i), 'R_score{0}'.format(i), 'p-value{0}'.format(i)]
             spamwriter.writerow(list)
 
@@ -282,13 +293,19 @@ def extract_id_from_filename(filename):
         index = match.group(1)
         return index
 
-def find_maximum_id_in_full_ECG_id_to_info_file():
+def find_maximum_id_in_full_ECG_id_to_info_file(kmax, step_cycle):
     """If you open csv file with full ECG id to info parameters, it finds id of row with maximum id
 
         output: id
     """
 
-    file_path = 'output/both_sexes_HFD_all_ECG_calculated_separeted_windows.csv'
+    file_path = 'output/{0}_HFD_all_ECG_calculated_kmax_is_{1}_step_cycle_{2}.csv'.format("both_sexes", kmax, step_cycle)
+
+    from pathlib import Path
+
+    my_file = Path(file_path)
+    if not my_file.is_file():
+        return -1
 
     max_id = -float("inf")
     with open(file_path, newline="", encoding="utf-8") as f:
@@ -306,7 +323,7 @@ def find_maximum_id_in_full_ECG_id_to_info_file():
 
     return max_id.lstrip("0")  # '1034' (без нулей впереди)
 
-def create_full_ECG_id_to_info_file():
+def create_full_ECG_id_to_info_file(kmax, step_cycle):
 
     try:
         cleaned_signals_filenames = list_files_with_cleaned_signal()    # Files of cleaned and r_peaks must be count equally
@@ -324,16 +341,20 @@ def create_full_ECG_id_to_info_file():
             raise FileNotFoundError("Error! Filenames of cleaned signals and r-peaks must be corresponding!")
     except NameError as e:
         print("NameError:", e)
+    ids = ids_csf
 
-    min_id = find_maximum_id_in_full_ECG_id_to_info_file()
+    step_cycle = 50
+    kmax_list = [10000, 16000, 25000]
+    kmax = kmax_list[2]
+    min_id = find_maximum_id_in_full_ECG_id_to_info_file(kmax, step_cycle) + 1
 
 
     # HFD = {} # Dictionary with HFD for each id
 
     for i in range(min_id, len(ids), 1):
         id = ids[i]
-        _, cleaned_time_series = extract_from_file_cleaned_signal_time_series(cleaned_signal_file[i])
-        peaks = extract_from_file_r_peaks_time_series(cleaned_signal_file[i], r_peaks_file[i])
+        _, cleaned_time_series = extract_from_file_cleaned_signal_time_series(cleaned_signals_filenames[i])
+        peaks = extract_from_file_r_peaks_time_series(id, r_peaks_filenames[i])
 
         normalized_cleaned = zscore_normalize(cleaned_time_series)
 
@@ -341,32 +362,32 @@ def create_full_ECG_id_to_info_file():
         while peaks and peaks[0] < 0:
             peaks.pop(0)
 
-        min_length = 480501
-        cycle_duration = 1500
+        min_length = 480501                 #Min length of ECG
+        cycle_duration = 1500               #Max duration of heart cycle
+        cycles_in_window = 100
+
+
         min_cycles = min_length / cycle_duration
-        get_cycles = int(min_cycles / 100) * 100
-        selected_R_peak_cycles = peaks[:get_cycles]
-        print(cleaned_signal_file)
+        get_cycles = int(min_cycles / cycles_in_window) * cycles_in_window
+        selected_R_peak_cycles = peaks[:get_cycles] #Беремо задану кількість серцевих циклів
+        print(cleaned_signals_filenames[i])
         print(selected_R_peak_cycles)
         print("Cycles: " + str(get_cycles))
 
-        print("Length: " + str(len(normalized)))
+        print("Length: " + str(len(normalized_cleaned)))
         print("Peaks: " + str(len(selected_R_peak_cycles)))
         # Тут закінчив.
 
         #Firstly kmax=1500, step_cycles = 20
-        centers_idx, info = windowed_hfd_cycles(normalized_cleaned, selected_R_peak_cycles, n_cycles=100, step_cycles=50,
-                                               kmax=10000)
+        centers_idx, info = windowed_hfd_cycles(normalized_cleaned, selected_R_peak_cycles, id, n_cycles=100, step_cycles=step_cycle,
+                                               kmax=kmax)
 
         #info - list with lists with [k, b, D, R_score]
         #hfd_mean = np.mean(hfd)
         #print(hfd_mean)
 
-        match = re.search(r'_(\d+)\.txt', cleaned_signal_file)
-        id = match.group(1)
-
         #write_HFD_calculated_value_to_csv("both sexes", id, hfd_mean)
-        write_HFD_calculated_value_to_csv("both sexes", id, info)
+        write_HFD_calculated_value_to_csv("both sexes", id, info, kmax, step_cycle)
         # HFD[id] = hfd_mean
         # Для времени: t_centers = centers_idx / fs
 
@@ -374,17 +395,47 @@ def create_full_ECG_id_to_info_file():
             break
 """ВНИМАНИЕ! R-пики могут быть отрицательны"""
 
-def load_id_to_hfd():
+def load_id_to_hfd(kmax, step_cycle):
 
     id_to_hfd = {}
 
+    import pandas as pd
+
+    # читаем CSV
+    df = pd.read_csv("your_file.csv")
+
+    # фиксированные колонки (которые не группируются)
+    fixed_cols = ["id"]
+
+    # все остальные (которые идут пятёрками)
+    other_cols = [c for c in df.columns if c not in fixed_cols]
+
+    # разбиваем на группы по 5
+    groups = [other_cols[i:i + 5] for i in range(0, len(other_cols), 5)]
+
+    # пример обхода по группам
+    for idx, group in enumerate(groups, start=1):
+        print(f"\n=== Group {idx} ===")
+        print("Columns:", group)
+
+        # достать данные конкретной группы
+        sub_df = df[fixed_cols + group]
+
+        # можно обрабатывать дальше — например, сохранить отдельно
+        # sub_df.to_csv(f"group_{idx}.csv", index=False)
+
+
+    file_path = 'output/{0}_HFD_all_ECG_calculated_kmax_is_{1}_step_cycle_{2}.csv'.format("both_sexes", kmax, step_cycle)
+
+    """
     with open('output/both_sexes_HFD_all_ECG_calculated.csv', newline='') as csvfile:
         spamreader = csv.DictReader(csvfile, delimiter=';', quotechar='|')
         for row in spamreader:
             id_ = f"{int(row['id']):04d}"
             hfd_value = float(row['HFD'])  # если числа с запятой
             id_to_hfd[id_] = hfd_value
-    return id_to_hfd
+    return 
+    """
 
 def age_range_agregation (id_to_hfd, id_ageRangeIndex_dict):
     """Create {'age_range': mean_hfd'} dictionary"""
@@ -424,10 +475,14 @@ def age_range_agregation_count (id_to_hfd, id_ageRangeIndex_dict):
 
 if __name__ == '__main__':
 
-    create_full_ECG_id_to_info_file()
-    """
-    id_to_hfd = load_id_to_hfd()
+    step_cycle = 50
+    kmax_list = [10000, 16000, 25000]
+    kmax = kmax_list[2]
 
+    create_full_ECG_id_to_info_file(kmax, step_cycle)
+
+    id_to_hfd = load_id_to_hfd(kmax, step_cycle)
+    """
     print(id_to_hfd)
 
     keys = id_to_hfd.keys()
