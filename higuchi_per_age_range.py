@@ -9,7 +9,8 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import r2_score
 import numpy as np
 from scipy import stats
-
+import statsmodels.api as sm
+from statsmodels.stats.diagnostic import linear_reset
 
 #Folder with files in each there is cleaned_signal time series
 
@@ -130,79 +131,134 @@ def zscore_normalize(x):
 
 
 
-def higuchi_fd(seg, id, window, kmax):
+def higuchi_fd(seg, id, window, num_k, kmax):
     #HFD = HiguchiFractalDimension.hfd(seg, opt=True,
     #                                    k_max=
-    k, L = HiguchiFractalDimension.curve_length(seg, opt=True, num_k=50, k_max=kmax)
+    is_plot = False
+    k, L = HiguchiFractalDimension.curve_length(seg, opt=True, num_k=num_k, k_max=kmax)
 
 
     # строим регрессию log–log
     x = np.log2(k)
     y = np.log2(L)
 
+    y_pred_linear, k, b, hfd, p_linear, lin_model_rsquared, lin_model_aic = linear_regression(x,y,is_plot)
+    y_pred_quadro, kefs, p_squared, quadr_model_rsquared, quadr_model_aic = quadratic_regression(x,y,is_plot)
+
+
+    print("\nСравнение моделей:")
+    print("R^2 линейной:",lin_model_rsquared)
+    print("R^2 квадратичной:", quadr_model_rsquared)
+    print("AIC линейной:", lin_model_aic)
+    print("AIC квадратичной:", quadr_model_aic)
+
+    if is_plot:
+        # Визуализация
+        plt.figure(figsize=(7, 5))
+        plt.scatter(x, y, label="Data (log2)", color="blue")
+        plt.plot(x, y_pred_linear, label=f"Fit: y = {k:.2f}x + {b:.2f}\nD = {hfd:.3f}, R² = {lin_model_rsquared:.3f}, \np-value linear = {p_linear:.5f}, \nAIC linear = {lin_model_aic:.3f}", color="red")
+        plt.plot(x, y_pred_quadro, label=f"Fit: y = {kefs[2]:.2f}x^2 + {kefs[1]:.2f}x + {kefs[0]:.2f},\nR² = {quadr_model_rsquared:.3f}, \np-value quadratic = {p_squared:.5f},\nAIC quadratic = {quadr_model_aic:.3f}",
+                 color="green")
+
+        plt.xlabel("log2(k)")
+        plt.ylabel("log2(L(k))")
+        plt.title("Higuchi Fractal Dimension (log-log) Id = {0}, window = {1}".format(id, window))
+        plt.legend()
+        plt.grid(True, ls="--", alpha=0.6)
+        plt.show()
+
+    return [k, b, hfd, p_linear, lin_model_rsquared, lin_model_aic, kefs[2], kefs[1], kefs[0], p_squared, quadr_model_rsquared, quadr_model_aic]
+
+
+def linear_regression(x, y, is_plot):
     res = stats.linregress(x, y)
 
-    k = res.slope
-    b = res.intercept
-    r2 = res.rvalue**2
-    p = res.pvalue
+    ########### Строим линейную модель ###########
 
-    print(f"Slope = {k:.4f}")
-    print(f"Intercept = {b:.4f}")
-    print(f"R^2 = {r2:.4f}")
-    print(f"p-value for slope = {p:.4e}")
+    X = sm.add_constant(x)  # добавляем константу
+    model_lin = sm.OLS(y, X).fit()
+    y_pred = model_lin.predict()
+    residuals = y-y_pred
 
+    # y_pred = res.intercept + res.slope * x
+
+    # коэффициенты
+    b = model_lin.params[0]  # beta_0
+    k = model_lin.params[1]  # beta_1
     hfd = -k
-    print(f"Higuchi fractal dimension D = {hfd:.4f}")
+
+    # p-value для каждого коэффициента
+    p_value = model_lin.f_pvalue
+    #p_intercept = p_values[0]
+    #p_slope = p_values[1]
+
+
+
+    # RESET тест (по умолчанию квадратичные и кубические термины)
+    reset_test = linear_reset(model_lin, power=2, use_f=True)
+    print("RESET-тест линейная модель:", reset_test)
+    p_value_reset = reset_test.pvalue
+    if p_value_reset > 0.0005:
+        with open("result.txt", "w", encoding="utf-8") as f:
+            f.write("NOT OK")
+
+    if is_plot:
+        plt.scatter(x, residuals, color="blue")
+        plt.axhline(0, color="red", linestyle="--")
+        plt.xlabel("log2(k)")
+        plt.ylabel("Residuals")
+        plt.title("Residuals linear vs log2(k)")
+        plt.show()
+
+    return y_pred, k, b, hfd, p_value, model_lin.rsquared, model_lin.aic
+
+def quadratic_regression(x, y, is_plot):
+
+    #coeffs = np.polyfit(x, y, deg=2)
+    #y_quadro_predicted = np.polyval(coeffs, x)
+    #y_quadro_predicted = coeffs[0] *x * x + coeffs[1]*x + coeffs[2]
 
 
 
 
-    # предсказанные значения по прямой
-    y_pred = k  * x + b
 
+    ########### квадратичная модель
+    X_quad = sm.add_constant(np.column_stack([x, x ** 2]))
+    model_quad = sm.OLS(y, X_quad).fit()
+    y_quad_pred = model_quad.predict(X_quad)
+    residuals_quad = y - y_quad_pred
+    quadr_model_rsquared = model_quad.rsquared
+    quadr_model_aic = model_quad.aic
+    p_value=model_quad.f_pvalue
+    # коэффициенты
+    kefs = [model_quad.params[0], model_quad.params[1], model_quad.params[2]]  # b, ax1, cx2
+    p_x2 = model_quad.pvalues[2]
+    print("p-value для коэффициента при x^2:", p_x2)
+    # считаем R^2
 
-
-
-
-
-
-
-
-
+    #from sklearn.metrics import r2_score
+    #r2_squared = r2_score(y, y_quadro_predicted)
 
     # Твои данные
     # k = np.array([...])
     # L = np.array([...])
-    """
-    # Визуализация
-    plt.figure(figsize=(7, 5))
-    plt.scatter(x, y, label="Data (log2)", color="blue")
-    plt.plot(x, y_pred, label=f"Fit: y = {k:.2f}x + {b:.2f}\nD = {hfd:.3f}, R² = {r2:.3f}, \np-value = {p}",  color="red")
-    plt.xlabel("log2(k)")
-    plt.ylabel("log2(L(k))")
-    plt.title("Higuchi Fractal Dimension (log-log) Id = {0}, window = {1}".format(id, window))
-    plt.legend()
-    plt.grid(True, ls="--", alpha=0.6)
-    plt.show()
 
-    y_pred = res.intercept + res.slope * x
-    residuals = y - y_pred
 
-    plt.scatter(x, residuals, color="blue")
-    plt.axhline(0, color="red", linestyle="--")
-    plt.xlabel("log2(k)")
-    plt.ylabel("Residuals")
-    plt.title("Residuals vs log2(k)")
-    plt.show()
-    """
+    # R^2
+    if is_plot:
+        plt.scatter(x, residuals_quad, color="blue")
+        plt.axhline(0, color="red", linestyle="--")
+        plt.xlabel("log2(k)")
+        plt.ylabel("Residuals")
+        plt.title("Residuals quadratic vs log2(k)")
+        plt.show()
 
-    return [k, b, hfd, r2, p]
+    return y_quad_pred, kefs, p_value, quadr_model_rsquared, quadr_model_aic
 
 
 
 
-def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray, id, n_cycles: int = 100, step_cycles: int = 20, kmax: int = 10):
+def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray, id, num_k : int = 50, n_cycles: int = 100, step_cycles: int = 20,  kmax: int = 10):
     """
     Оконный HFD по фиксированному числу сердечных циклов.
     rpeaks_idx: индексы R-пиков в отсчетах (возрастающий массив)
@@ -233,22 +289,22 @@ def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray, id, n_cycles: int
             continue
         seg = x[a:b]
         #print("Длина сегмента: "+str(len(seg)))
-        info_vals.append(higuchi_fd(seg, id, w + 1, kmax=kmax))
+        info_vals.append(higuchi_fd(seg, id, w + 1, num_k, kmax=kmax))
         centers.append((a + b) // 2)
     return np.array(centers), np.array(info_vals)
 
-def write_average_HFD_values_for_each_age_range(sex, kmax, cycle_step, higuchi_average_per_each_age_group):
-    with open('output/{0}_HFD_average_of_ECG_per_age_range_kmax_{1}_cycle_step_{2}.csv'.format(sex, kmax, cycle_step), 'w', newline='') as csvfile:
+def write_average_HFD_values_for_each_age_range(sex, num_k, kmax, cycle_step, higuchi_average_per_each_age_group):
+    with open('output/{0}_HFD_average_of_ECG_per_age_range_kmax_{1}_cycle_step_{2}_num_k_{3}_full.csv'.format(sex, kmax, cycle_step, num_k), 'w', newline='') as csvfile:
         spamwriter = csv.writer(csvfile, delimiter=';',
                                     quotechar='|', quoting=csv.QUOTE_MINIMAL)
 
         for age_group in higuchi_average_per_each_age_group.keys():
             spamwriter.writerow([m2.age_groups[age_group], f"{higuchi_average_per_each_age_group[age_group]:.3f}".replace('.', ',')])
 
-def write_HFD_calculated_value_to_csv(sex, id, info, kmax, step_cycle):
+def write_HFD_calculated_value_to_csv(sex, id, info, kmax, step_cycle, knum):
     # ECG 1 and 2 simulationusly
 
-    file_path = 'output/{0}_HFD_all_ECG_calculated_kmax_is_{1}_step_cycle_{2}.csv'.format(sex, kmax, step_cycle)
+    file_path = 'output/{0}_HFD_all_ECG_calculated_kmax_is_{1}_step_cycle_{2}_num_k_{3}.csv'.format(sex, kmax, step_cycle, knum)
 
     # Проверяем, существует ли файл и пуст ли он
     file_exists = os.path.isfile(file_path)
@@ -263,8 +319,12 @@ def write_HFD_calculated_value_to_csv(sex, id, info, kmax, step_cycle):
 
             list = ['id']
             for i in range(1, windows_count + 1, 1):
-                list += ['k{0}'.format(i), 'b{0}'.format(i), 'D{0}'.format(i), 'R_score{0}'.format(i), 'p-value{0}'.format(i)]
+                list += ['k{0}'.format(i), 'b{0}'.format(i), 'D{0}'.format(i), 'p-value linear {0}'.format(i),
+                         'R_score{0}'.format(i), 'AIC_linear{0}'.format(i),
+                         'kef x^2 ({0})'.format(i), 'kef x ({0})'.format(i),'kef 1 ({0})'.format(i),
+                         'p-value quadr {0}'.format(i), 'R_score quadr {0}'.format(i), 'AIC_quadr{0}'.format(i)]
             spamwriter.writerow(list)
+
 
         # Добавляем новые строки
 
@@ -274,9 +334,20 @@ def write_HFD_calculated_value_to_csv(sex, id, info, kmax, step_cycle):
             # info[i][0] - i-th window k parameter
             # info[i][1] - i-th window b parameter
             # info[i][2] - i-th window D parameter
-            # info[i][3] - i-th window R_square parameter
-            # info[i][3] - i-th window p-value parameter
-            list += [f"{info[i][0]:.3f}", f"{info[i][1]:.3f}", f"{info[i][2]:.3f}", f"{info[i][3]:.3f}", f"{info[i][4]:.3f}"]
+            # info[i][3] - i-th window p-value linear parameter
+            # info[i][4] - i-th window R_square parameter
+            # info[i][5] - i-th window AIC parameter
+            # info[i][6] - i-th window ax^2 parameter
+            # info[i][7] - i-th window by parameter
+            # info[i][8] - i-th window c parameter
+            # info[i][9] - i-th window p-value squared parameter
+            # info[i][10] - i-th window R_square quad
+            # info[i][11] - i-th window AIC quad
+
+
+            list += [f"{info[i][0]:.3f}", f"{info[i][1]:.3f}", f"{info[i][2]:.3f}", f"{info[i][3]:.3f}",
+                     f"{info[i][4]:.3f}", f"{info[i][5]:.3f}", f"{info[i][6]:.3f}", f"{info[i][7]:.3f}",
+                     f"{info[i][8]:.3f}", f"{info[i][9]:.3f}", f"{info[i][10]:.3f}", f"{info[i][11]:.3f}"]
         spamwriter.writerow(list)
 
 
@@ -307,7 +378,7 @@ def find_maximum_id_in_full_ECG_id_to_info_file(kmax, step_cycle):
     if not my_file.is_file():
         return -1
 
-    max_id = -float("inf")
+    max_id = -1
     with open(file_path, newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
         next(reader)  # пропускаем заголовок, если он есть
@@ -320,10 +391,10 @@ def find_maximum_id_in_full_ECG_id_to_info_file(kmax, step_cycle):
                 continue
 
     print("Максимальный id:", max_id)
+    #max_id.lstrip("0")  # '1034' (без нулей впереди)
+    return max_id  # '1034' (без нулей впереди)
 
-    return max_id.lstrip("0")  # '1034' (без нулей впереди)
-
-def create_full_ECG_id_to_info_file(kmax, step_cycle):
+def create_full_ECG_id_to_info_file(kmax, step_cycle,num_k):
 
     try:
         cleaned_signals_filenames = list_files_with_cleaned_signal()    # Files of cleaned and r_peaks must be count equally
@@ -343,9 +414,9 @@ def create_full_ECG_id_to_info_file(kmax, step_cycle):
         print("NameError:", e)
     ids = ids_csf
 
-    step_cycle = 50
-    kmax_list = [10000, 16000, 25000]
-    kmax = kmax_list[2]
+    #tep_cycle = 50
+    #kmax_list = [10000, 16000, 25000]
+    #kmax = kmax_list[2]
     min_id = find_maximum_id_in_full_ECG_id_to_info_file(kmax, step_cycle) + 1
 
 
@@ -379,7 +450,7 @@ def create_full_ECG_id_to_info_file(kmax, step_cycle):
         # Тут закінчив.
 
         #Firstly kmax=1500, step_cycles = 20
-        centers_idx, info = windowed_hfd_cycles(normalized_cleaned, selected_R_peak_cycles, id, n_cycles=100, step_cycles=step_cycle,
+        centers_idx, info = windowed_hfd_cycles(normalized_cleaned, selected_R_peak_cycles, id, num_k=num_k, n_cycles=100, step_cycles=step_cycle,
                                                kmax=kmax)
 
         #info - list with lists with [k, b, D, R_score]
@@ -387,7 +458,7 @@ def create_full_ECG_id_to_info_file(kmax, step_cycle):
         #print(hfd_mean)
 
         #write_HFD_calculated_value_to_csv("both sexes", id, hfd_mean)
-        write_HFD_calculated_value_to_csv("both sexes", id, info, kmax, step_cycle)
+        write_HFD_calculated_value_to_csv("both_sexes", id, info, kmax, step_cycle, num_k)
         # HFD[id] = hfd_mean
         # Для времени: t_centers = centers_idx / fs
 
@@ -395,14 +466,16 @@ def create_full_ECG_id_to_info_file(kmax, step_cycle):
             break
 """ВНИМАНИЕ! R-пики могут быть отрицательны"""
 
-def load_id_to_hfd(kmax, step_cycle):
+def load_id_to_hfd(kmax, step_cycle, num_k):
+    file_path = 'output/{0}_HFD_all_ECG_calculated_kmax_is_{1}_step_cycle_{2}_num_k_{3}_full.csv'.format("both_sexes", kmax,
+                                                                                          step_cycle, num_k)
 
-    id_to_hfd = {}
+
 
     import pandas as pd
 
     # читаем CSV
-    df = pd.read_csv("your_file.csv")
+    df = pd.read_csv(file_path,sep=";")
 
     # фиксированные колонки (которые не группируются)
     fixed_cols = ["id"]
@@ -411,21 +484,42 @@ def load_id_to_hfd(kmax, step_cycle):
     other_cols = [c for c in df.columns if c not in fixed_cols]
 
     # разбиваем на группы по 5
-    groups = [other_cols[i:i + 5] for i in range(0, len(other_cols), 5)]
+    groups = [other_cols[i:i + 12] for i in range(0, len(other_cols), 12)]
 
+    id_to_hfd = {}
+
+    higuches = []
     # пример обхода по группам
     for idx, group in enumerate(groups, start=1):
         print(f"\n=== Group {idx} ===")
         print("Columns:", group)
 
         # достать данные конкретной группы
-        sub_df = df[fixed_cols + group]
+        #sub_df = df[fixed_cols + group]
+        higuches.append(df[group[2]])
 
+        # info[i][0] - i-th window k parameter
+        # info[i][1] - i-th window b parameter
+        # info[i][2] - i-th window D parameter
+        # info[i][3] - i-th window R_square parameter
+        # info[i][3] - i-th window p-value parameter
+
+    for i in range(len(higuches[0])):
+        higuches_line = []
+        for j in range(len(higuches)):
+            higuches_line.append(higuches[j][i])
+
+
+        averaged_hfd = np.mean(higuches_line)
+
+        id_to_hfd[f"{df['id'][i]:04d}"] = averaged_hfd
+
+    #print(id_to_hfd)
         # можно обрабатывать дальше — например, сохранить отдельно
         # sub_df.to_csv(f"group_{idx}.csv", index=False)
 
+    return id_to_hfd
 
-    file_path = 'output/{0}_HFD_all_ECG_calculated_kmax_is_{1}_step_cycle_{2}.csv'.format("both_sexes", kmax, step_cycle)
 
     """
     with open('output/both_sexes_HFD_all_ECG_calculated.csv', newline='') as csvfile:
@@ -478,11 +572,13 @@ if __name__ == '__main__':
     step_cycle = 50
     kmax_list = [10000, 16000, 25000]
     kmax = kmax_list[2]
+    num_k=50
 
-    create_full_ECG_id_to_info_file(kmax, step_cycle)
+    #create_full_ECG_id_to_info_file(kmax, step_cycle, num_k)
 
-    id_to_hfd = load_id_to_hfd(kmax, step_cycle)
-    """
+
+    id_to_hfd = load_id_to_hfd(kmax, step_cycle, num_k)
+
     print(id_to_hfd)
 
     keys = id_to_hfd.keys()
@@ -493,18 +589,18 @@ if __name__ == '__main__':
 
     male_id_ageRangeIndex_dict, female_id_ageRangeIndex_dict = m2.get_age_ranges_for_male_and_female(keys, male_ids, female_ids)
 
-    #ale_age_range_to_mean_hfd = age_range_agregation(id_to_hfd, male_id_ageRangeIndex_dict)
-    #female_age_range_to_mean_hfd = age_range_agregation(id_to_hfd, female_id_ageRangeIndex_dict)
+    male_age_range_to_mean_hfd = age_range_agregation(id_to_hfd, male_id_ageRangeIndex_dict)
+    female_age_range_to_mean_hfd = age_range_agregation(id_to_hfd, female_id_ageRangeIndex_dict)
 
-    male_age_range_to_count = age_range_agregation_count(id_to_hfd, male_id_ageRangeIndex_dict)
-    female_age_range_to_count = age_range_agregation_count(id_to_hfd, female_id_ageRangeIndex_dict)
-    m2.write_number_of_ECGs_per_age_range_for_both_HFD("male", male_age_range_to_count)
-    m2.write_number_of_ECGs_per_age_range_for_both_HFD("female", female_age_range_to_count)
+    #male_age_range_to_count = age_range_agregation_count(id_to_hfd, male_id_ageRangeIndex_dict)
+    #female_age_range_to_count = age_range_agregation_count(id_to_hfd, female_id_ageRangeIndex_dict)
+    #m2.write_number_of_ECGs_per_age_range_for_both_HFD("male", male_age_range_to_count)
+    #m2.write_number_of_ECGs_per_age_range_for_both_HFD("female", female_age_range_to_count)
 
-    #write_average_HFD_values_for_each_age_range("male", male_age_range_to_mean_hfd)
-    #write_average_HFD_values_for_each_age_range("female", female_age_range_to_mean_hfd)
+    write_average_HFD_values_for_each_age_range("male",num_k, kmax, step_cycle, male_age_range_to_mean_hfd)
+    write_average_HFD_values_for_each_age_range("female",num_k, kmax, step_cycle, female_age_range_to_mean_hfd)
     #write_average_HFD_values_for_each_age_range("both_sexes", age_to_mean_hfd)
-    """
+
 
 
 
