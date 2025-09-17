@@ -17,7 +17,19 @@ import matplotlib.pyplot as plt
 import os.path
 import sys
 import os
-
+import numpy as np
+import HiguchiFractalDimension.hfd
+import main2 as m2
+import re
+import os
+import csv
+from collections import defaultdict
+import matplotlib.pyplot as plt
+from sklearn.metrics import r2_score
+import numpy as np
+from scipy import stats
+import statsmodels.api as sm
+from statsmodels.stats.diagnostic import linear_reset
 #<<<<<<< HEAD
 # Импортируем функцию bwr
 #=======
@@ -2399,6 +2411,11 @@ def plot_RR_intervals_time_series(rr_intervals, first_time=40000, second_time=54
     plt.legend()
     plt.show()
 
+
+
+
+
+
 if __name__ == '__main__':
 
 
@@ -2479,16 +2496,15 @@ if __name__ == '__main__':
 
     #read_ECGs_annotation_data(False, True)
 
-
-
-
+    import higuchi_per_age_range as hpar
+    """
     num_k_value = 50
     k_max_value = None
 
+    
 
 
-
-
+    #!!!
     # Get list of files with rr_intervals time series
     files = list_files_with_rr_intervals()
 
@@ -2499,29 +2515,72 @@ if __name__ == '__main__':
     ########################################## RHYTMOGRAMMA ###########################################################
     ###################################################################################################################
     """
+    """
     rr_intervals = rr_time_series_dictionary['1083']
     plot_RR_intervals_time_series(rr_intervals, first_time=40000, second_time=54000)
     # Извлекаем RR-интервалы
-    
     """
+    """
+
+    ###!!!
+
     ###################################################################################################################
 
     #Find minimum count of rr_intervals in time series of dictionary
     find_minimum_count(rr_time_series_dictionary)
 
     check_for_minimum_time_rr_time_intervals(rr_time_series_dictionary, 300000)
-
+    k_max_values = range(2, 45, 1)
     # 440 min count, all > 5 min
-    preprocessed_dictionary = {}
+    for k_max in k_max_values:
+        preprocessed_dictionary = {}
 
-    # Preprocess each rr_intervals record
-    for key in rr_time_series_dictionary.keys():
-        preprocessed_dictionary[key] = preprocess_rr_intervals(rr_time_series_dictionary[key])
+        num_k_value=50
+        #k_max_value = 44
+        # Preprocess each rr_intervals record
+        for key in rr_time_series_dictionary.keys():
+            preprocessed_dictionary[key] = preprocess_rr_intervals(rr_time_series_dictionary[key])
+            normalized_preprocessed = hpar.zscore_normalize(preprocessed_dictionary[key])
+            #print (len(preprocessed_dictionary[key]))
+            info = [hpar.higuchi_fd(np.array(preprocessed_dictionary[key]), key, 1, num_k_value, k_max_value)]
+            hpar.write_HFD_calculated_info_to_csv("both_sexes", 'hrv_ecg', key, info, k_max, None, num_k_value)
+    """
+
+    #step_cycle = 50
+    #kmax_list = [10000, 16000, 25000]
+    #kmax = kmax_list[2]
+    #num_k = 50
+    num_k_value = 50
+    k_max_value = 44
+    #create_full_ECG_id_to_info_file(kmax, step_cycle, num_k)
+    methods = ['average', 'median', 'trimmed_mean']
+    method = methods[0]
+    k_max_values = range(2, 45, 1)
+    num_k_value = 50
+    for k_max in k_max_values:
+        id_to_hfd = hpar.load_id_to_hfd('both_sexes', k_max, None, num_k_value, method, 'hrv_ecg')  # 'average' or 'median'
+
+    #print(id_to_hfd)
+
+        hpar.write_different_sexes(id_to_hfd, num_k_value, k_max, None, method, 'hrv_ecg')
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+    """
 
     #check_for_minimum_time_rr_time_intervals(rr_time_series_dictionary)
-
+    """
 
 
 
@@ -2549,9 +2608,10 @@ if __name__ == '__main__':
         plt.show()
     """
 
-    dict = calculate_higuchi(preprocessed_dictionary)
+    #!!!!!!!!
+    #dict = calculate_higuchi(preprocessed_dictionary)
     #classify_ids_by_sex(preprocessed_dictionary.keys())
-    calculate_linear_regression(preprocessed_dictionary, dict)
+    #calculate_linear_regression(preprocessed_dictionary, dict)
 
     """
     #test_records_for_breaks()

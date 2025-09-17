@@ -293,28 +293,51 @@ def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray, id, num_k : int =
         centers.append((a + b) // 2)
     return np.array(centers), np.array(info_vals)
 
-def write_average_HFD_values_for_each_age_range(sex, num_k, kmax, cycle_step, higuchi_average_per_each_age_group):
-    with open('output/{0}_HFD_average_of_ECG_per_age_range_kmax_{1}_cycle_step_{2}_num_k_{3}_full.csv'.format(sex, kmax, cycle_step, num_k), 'w', newline='') as csvfile:
+def write_average_HFD_values_for_each_age_range(sex, num_k, kmax, window_step, higuchi_average_per_each_age_group, method, time_series_type):
+
+
+    file_path = None
+
+    if time_series_type == 'full_ecg':
+        file_path = 'output/{0}_HFD_all_ECG_calculated_kmax_is_{1}_step_cycle_{2}_num_k_{3}.csv'.format(sex, kmax,
+                                                                                                        window_step,
+                                                                                                        num_k)
+    elif time_series_type == 'hrv_ecg':
+        file_path = 'output/hrv/{0}_HFD_HRV_ECG_calculated_num_k_is_{1}_kmax_is_{2}_window_step_is_{3}.csv'.format(sex,
+                                                                                                                   num_k,
+                                                                                                                   kmax,
+                                                                                                                   window_step)
+
+
+
+    with open(file_path, 'w', newline='') as csvfile:
         spamwriter = csv.writer(csvfile, delimiter=';',
                                     quotechar='|', quoting=csv.QUOTE_MINIMAL)
 
         for age_group in higuchi_average_per_each_age_group.keys():
             spamwriter.writerow([m2.age_groups[age_group], f"{higuchi_average_per_each_age_group[age_group]:.3f}".replace('.', ',')])
 
-def write_HFD_calculated_value_to_csv(sex, id, info, kmax, step_cycle, knum):
+def write_HFD_calculated_info_to_csv(sex, time_series_type, id, info, kmax, window_step, num_k):
     # ECG 1 and 2 simulationusly
 
-    file_path = 'output/{0}_HFD_all_ECG_calculated_kmax_is_{1}_step_cycle_{2}_num_k_{3}.csv'.format(sex, kmax, step_cycle, knum)
+    windows_count = len(info)
 
-    # Проверяем, существует ли файл и пуст ли он
+    file_path = None
+
+    if time_series_type == 'full_ecg':
+        file_path = 'output/{0}_HFD_all_ECG_calculated_kmax_is_{1}_step_cycle_{2}_num_k_{3}.csv'.format(sex, kmax, step_cycle, knum)
+    elif time_series_type == 'hrv_ecg':
+        file_path = 'output/hrv/{0}_HFD_HRV_ECG_calculated_num_k_is_{1}_kmax_is_{2}_window_step_is_{3}.csv'.format(sex, num_k, kmax, window_step)
+
+    # Check, if file exist or empty
     file_exists = os.path.isfile(file_path)
     file_empty = not file_exists or os.path.getsize(file_path) == 0
 
     with open(file_path, 'a', newline='') as csvfile:
         spamwriter = csv.writer(csvfile, delimiter=';',
                                 quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        windows_count = len(info)
-        # Если файл пустой, пишем заголовок
+
+        # If file is empty, write title
         if file_empty:
 
             list = ['id']
@@ -326,10 +349,10 @@ def write_HFD_calculated_value_to_csv(sex, id, info, kmax, step_cycle, knum):
             spamwriter.writerow(list)
 
 
-        # Добавляем новые строки
-
+        # Add new rows
 
         list = [id]
+
         for i in range(0, windows_count, 1):
             # info[i][0] - i-th window k parameter
             # info[i][1] - i-th window b parameter
@@ -344,10 +367,10 @@ def write_HFD_calculated_value_to_csv(sex, id, info, kmax, step_cycle, knum):
             # info[i][10] - i-th window R_square quad
             # info[i][11] - i-th window AIC quad
 
-
-            list += [f"{info[i][0]:.3f}", f"{info[i][1]:.3f}", f"{info[i][2]:.3f}", f"{info[i][3]:.3f}",
+            list += [f"{info[i][0]:.3f}", f"{info[i][1]:.3f}", f"{info[i][2]:.3f}", f"{info[i][3]:.25f}",
                      f"{info[i][4]:.3f}", f"{info[i][5]:.3f}", f"{info[i][6]:.3f}", f"{info[i][7]:.3f}",
-                     f"{info[i][8]:.3f}", f"{info[i][9]:.3f}", f"{info[i][10]:.3f}", f"{info[i][11]:.3f}"]
+                     f"{info[i][8]:.3f}", f"{info[i][9]:.25f}", f"{info[i][10]:.3f}", f"{info[i][11]:.3f}"]
+
         spamwriter.writerow(list)
 
 
@@ -457,8 +480,8 @@ def create_full_ECG_id_to_info_file(kmax, step_cycle,num_k):
         #hfd_mean = np.mean(hfd)
         #print(hfd_mean)
 
-        #write_HFD_calculated_value_to_csv("both sexes", id, hfd_mean)
-        write_HFD_calculated_value_to_csv("both_sexes", id, info, kmax, step_cycle, num_k)
+        #write_HFD_calculated_info_to_csv("both sexes", id, hfd_mean)
+        write_HFD_calculated_info_to_csv("both_sexes", 'full_ecg', id, info, kmax, step_cycle, num_k)
         # HFD[id] = hfd_mean
         # Для времени: t_centers = centers_idx / fs
 
@@ -466,8 +489,9 @@ def create_full_ECG_id_to_info_file(kmax, step_cycle,num_k):
             break
 """ВНИМАНИЕ! R-пики могут быть отрицательны"""
 
-def load_id_to_hfd(kmax, step_cycle, num_k):
-    file_path = 'output/{0}_HFD_all_ECG_calculated_kmax_is_{1}_step_cycle_{2}_num_k_{3}_full.csv'.format("both_sexes", kmax,
+
+def load_id_to_hfd(kmax, step_cycle, num_k, method):
+    file_path = 'output/{0}_hrv_HFD_all_ECG_calculated_kmax_is_{1}_step_cycle_{2}_num_k_{3}.csv'.format("both_sexes", kmax,
                                                                                           step_cycle, num_k)
 
 
@@ -496,7 +520,7 @@ def load_id_to_hfd(kmax, step_cycle, num_k):
 
         # достать данные конкретной группы
         #sub_df = df[fixed_cols + group]
-        higuches.append(df[group[2]])
+        higuches.append(df[group[2]]) #Only HFD for selected group
 
         # info[i][0] - i-th window k parameter
         # info[i][1] - i-th window b parameter
@@ -504,15 +528,142 @@ def load_id_to_hfd(kmax, step_cycle, num_k):
         # info[i][3] - i-th window R_square parameter
         # info[i][3] - i-th window p-value parameter
 
-    for i in range(len(higuches[0])):
+    for i in range(len(higuches[0])): #
         higuches_line = []
         for j in range(len(higuches)):
             higuches_line.append(higuches[j][i])
 
+        higuches_line_float = higuches_line
 
-        averaged_hfd = np.mean(higuches_line)
+        if method == 'average':
+            total_hfd = np.mean(higuches_line_float)
+            id_to_hfd[f"{df['id'][i]:04d}"] = total_hfd
+        elif method == 'median':
+            total_hfd = np.median(higuches_line_float)
+            id_to_hfd[f"{df['id'][i]:04d}"] = total_hfd
+        elif method == 'trimmed_mean':
+            # усечённое среднее 10%
+            trimmed = stats.trim_mean(higuches_line_float, 0.1)
 
-        id_to_hfd[f"{df['id'][i]:04d}"] = averaged_hfd
+            id_to_hfd[f"{df['id'][i]:04d}"] = trimmed
+
+        elif mehtod == 'bootstrap_mean':
+
+            # параметры
+            B = 10000  # число бутстрэп-репликаций
+            m = len(higuches_line_float)
+
+            # бутстрэп
+            bootstrap_means = []
+            for _ in range(B):
+                sample = np.random.choice(higuches_line_float, size=m, replace=True)
+                bootstrap_means.append(np.mean(sample))
+
+            bootstrap_means = np.array(bootstrap_means)
+
+            # доверительный интервал 95%
+            ci_lower = np.percentile(bootstrap_means, 2.5)
+            ci_upper = np.percentile(bootstrap_means, 97.5)
+
+            print(f"Среднее HFD: {np.mean(higuches_line_float):.3f}")
+            print(f"95% доверительный интервал: [{ci_lower:.3f}, {ci_upper:.3f}]")
+
+
+
+    #print(id_to_hfd)
+        # можно обрабатывать дальше — например, сохранить отдельно
+        # sub_df.to_csv(f"group_{idx}.csv", index=False)
+
+    return id_to_hfd
+
+
+
+def load_id_to_hfd(sex, kmax, window_step, num_k, method, time_series_type):
+
+
+    file_path = None
+
+    if time_series_type == 'full_ecg':
+        file_path = 'output/{0}_HFD_all_ECG_calculated_kmax_is_{1}_step_cycle_{2}_num_k_{3}.csv'.format(sex, kmax,
+                                                                                                        window_step,
+                                                                                                        num_k)
+    elif time_series_type == 'hrv_ecg':
+        file_path = 'output/hrv/{0}_HFD_HRV_ECG_calculated_num_k_is_{1}_kmax_is_{2}_window_step_is_{3}.csv'.format(sex,
+                                                                                                                   num_k,
+                                                                                                                   kmax, window_step)
+
+    import pandas as pd
+
+    # читаем CSV
+    df = pd.read_csv(file_path,sep=";")
+
+    # фиксированные колонки (которые не группируются)
+    fixed_cols = ["id"]
+
+    # все остальные (которые идут пятёрками)
+    other_cols = [c for c in df.columns if c not in fixed_cols]
+
+    # разбиваем на группы по 5
+    groups = [other_cols[i:i + 12] for i in range(0, len(other_cols), 12)]
+
+    id_to_hfd = {}
+
+    higuches = []
+    # пример обхода по группам
+    for idx, group in enumerate(groups, start=1):
+        print(f"\n=== Group {idx} ===")
+        print("Columns:", group)
+
+        # достать данные конкретной группы
+        #sub_df = df[fixed_cols + group]
+        higuches.append(df[group[2]]) #Only HFD for selected group
+
+        # info[i][0] - i-th window k parameter
+        # info[i][1] - i-th window b parameter
+        # info[i][2] - i-th window D parameter
+        # info[i][3] - i-th window R_square parameter
+        # info[i][3] - i-th window p-value parameter
+
+    for i in range(len(higuches[0])): #
+        higuches_line = []
+        for j in range(len(higuches)):
+            higuches_line.append(higuches[j][i])
+
+        #higuches_line_float = [float(x.replace(",", ".")) for x in higuches_line]
+        if method == 'average':
+            total_hfd = np.mean(higuches_line)
+            id_to_hfd[f"{df['id'][i]:04d}"] = total_hfd
+        elif method == 'median':
+            total_hfd = np.median(higuches_line)
+            id_to_hfd[f"{df['id'][i]:04d}"] = total_hfd
+        elif method == 'trimmed_mean':
+            # усечённое среднее 10%
+            trimmed = stats.trim_mean(higuches_line, 0.1)
+
+            id_to_hfd[f"{df['id'][i]:04d}"] = trimmed
+
+        elif mehtod == 'bootstrap_mean':
+
+            # параметры
+            B = 10000  # число бутстрэп-репликаций
+            m = len(higuches_line)
+
+            # бутстрэп
+            bootstrap_means = []
+            for _ in range(B):
+                sample = np.random.choice(higuches_line, size=m, replace=True)
+                bootstrap_means.append(np.mean(sample))
+
+            bootstrap_means = np.array(bootstrap_means)
+
+            # доверительный интервал 95%
+            ci_lower = np.percentile(bootstrap_means, 2.5)
+            ci_upper = np.percentile(bootstrap_means, 97.5)
+
+            print(f"Среднее HFD: {np.mean(higuches_line):.3f}")
+            print(f"95% доверительный интервал: [{ci_lower:.3f}, {ci_upper:.3f}]")
+
+
 
     #print(id_to_hfd)
         # можно обрабатывать дальше — например, сохранить отдельно
@@ -567,22 +718,10 @@ def age_range_agregation_count (id_to_hfd, id_ageRangeIndex_dict):
 
     return age_to_count
 
-if __name__ == '__main__':
-
-    step_cycle = 50
-    kmax_list = [10000, 16000, 25000]
-    kmax = kmax_list[2]
-    num_k=50
-
-    #create_full_ECG_id_to_info_file(kmax, step_cycle, num_k)
-
-
-    id_to_hfd = load_id_to_hfd(kmax, step_cycle, num_k)
-
-    print(id_to_hfd)
+def write_different_sexes(id_to_hfd, num_k, kmax, step_cycle, method, time_series_type):
 
     keys = id_to_hfd.keys()
-    male_ids, female_ids = m2.classify_ids_by_sex(id_to_hfd.keys())
+    male_ids, female_ids = m2.classify_ids_by_sex(keys)
 
     print(male_ids)
     print(female_ids)
@@ -597,9 +736,36 @@ if __name__ == '__main__':
     #m2.write_number_of_ECGs_per_age_range_for_both_HFD("male", male_age_range_to_count)
     #m2.write_number_of_ECGs_per_age_range_for_both_HFD("female", female_age_range_to_count)
 
-    write_average_HFD_values_for_each_age_range("male",num_k, kmax, step_cycle, male_age_range_to_mean_hfd)
-    write_average_HFD_values_for_each_age_range("female",num_k, kmax, step_cycle, female_age_range_to_mean_hfd)
+    write_average_HFD_values_for_each_age_range("male",num_k, kmax, step_cycle, male_age_range_to_mean_hfd, method, time_series_type)
+    write_average_HFD_values_for_each_age_range("female",num_k, kmax, step_cycle, female_age_range_to_mean_hfd, method, time_series_type)
     #write_average_HFD_values_for_each_age_range("both_sexes", age_to_mean_hfd)
+
+
+
+if __name__ == '__main__':
+
+    step_cycle = 50
+    kmax_list = [10000, 16000, 25000]
+    kmax = kmax_list[2]
+    num_k=50
+
+    #create_full_ECG_id_to_info_file(kmax, step_cycle, num_k)
+    methods = ['average', 'median', 'trimmed_mean']
+    method = methods[2]
+    id_to_hfd = load_id_to_hfd('both_sexes', kmax, step_cycle, num_k, method,'full_ecg') #'average' or 'median'
+
+    print(id_to_hfd)
+
+    write_different_sexes(id_to_hfd, num_k, kmax, step_cycle, method)
+
+
+
+
+
+
+
+
+
 
 
 
