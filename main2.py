@@ -2519,18 +2519,19 @@ if __name__ == '__main__':
     rr_intervals = rr_time_series_dictionary['1083']
     plot_RR_intervals_time_series(rr_intervals, first_time=40000, second_time=54000)
     # Извлекаем RR-интервалы
-    """
-    """
+
+
 
     ###!!!
-
+    is_plot = False
     ###################################################################################################################
 
     #Find minimum count of rr_intervals in time series of dictionary
     find_minimum_count(rr_time_series_dictionary)
 
     check_for_minimum_time_rr_time_intervals(rr_time_series_dictionary, 300000)
-    k_max_values = range(2, 45, 1)
+    #k_max_values = range(2, 45, 1)
+    k_max_values = range(20, 21, 1)
     # 440 min count, all > 5 min
     for k_max in k_max_values:
         preprocessed_dictionary = {}
@@ -2542,10 +2543,10 @@ if __name__ == '__main__':
             preprocessed_dictionary[key] = preprocess_rr_intervals(rr_time_series_dictionary[key])
             normalized_preprocessed = hpar.zscore_normalize(preprocessed_dictionary[key])
             #print (len(preprocessed_dictionary[key]))
-            info = [hpar.higuchi_fd(np.array(preprocessed_dictionary[key]), key, 1, num_k_value, k_max_value)]
+            info = [hpar.higuchi_fd(np.array(preprocessed_dictionary[key]), key, 1, num_k_value, is_plot, k_max_value)]
             hpar.write_HFD_calculated_info_to_csv("both_sexes", 'hrv_ecg', key, info, k_max, None, num_k_value)
-    """
 
+    """
     #step_cycle = 50
     #kmax_list = [10000, 16000, 25000]
     #kmax = kmax_list[2]
@@ -2555,18 +2556,19 @@ if __name__ == '__main__':
     #create_full_ECG_id_to_info_file(kmax, step_cycle, num_k)
     methods = ['average', 'median', 'trimmed_mean']
     method = methods[0]
-    k_max_values = range(2, 45, 1)
+    k_max_values = range(20, 45, 1)
     num_k_value = 50
     for k_max in k_max_values:
-        id_to_hfd = hpar.load_id_to_hfd('both_sexes', k_max, None, num_k_value, method, 'hrv_ecg')  # 'average' or 'median'
-
+        #Id to hfd values
+        id_to_hfd = hpar.load_id_to_hfd('both_sexes', k_max, None, num_k_value, method, 'hrv_AIC_ecg')  # 'average' or 'median'
+    
     #print(id_to_hfd)
 
-        hpar.write_different_sexes(id_to_hfd, num_k_value, k_max, None, method, 'hrv_ecg')
+        hpar.write_different_sexes(id_to_hfd, num_k_value, k_max, None, method, 'hrv_AIC_ecg')
 
 
 
-
+    """"""
 
 
 
@@ -2673,7 +2675,7 @@ if __name__ == '__main__':
 
     hfd = calculate_higuchi(record[0],record[1])
     print(hfd)
-"""
+    """
     #read_ECG_data(1057346, TypeOfECGCut.full, 3)
     #open_record('0637', 0, 480501)
     #number_of_ECG_by_each_age_group()

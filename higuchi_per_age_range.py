@@ -131,10 +131,10 @@ def zscore_normalize(x):
 
 
 
-def higuchi_fd(seg, id, window, num_k, kmax):
+def higuchi_fd(seg, id, window, num_k, is_plot, kmax):
     #HFD = HiguchiFractalDimension.hfd(seg, opt=True,
     #                                    k_max=
-    is_plot = False
+
     k, L = HiguchiFractalDimension.curve_length(seg, opt=True, num_k=num_k, k_max=kmax)
 
 
@@ -258,7 +258,7 @@ def quadratic_regression(x, y, is_plot):
 
 
 
-def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray, id, num_k : int = 50, n_cycles: int = 100, step_cycles: int = 20,  kmax: int = 10):
+def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray,is_plot, id, num_k : int = 50, n_cycles: int = 100, step_cycles: int = 20,  kmax: int = 10, ):
     """
     Оконный HFD по фиксированному числу сердечных циклов.
     rpeaks_idx: индексы R-пиков в отсчетах (возрастающий массив)
@@ -289,7 +289,7 @@ def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray, id, num_k : int =
             continue
         seg = x[a:b]
         #print("Длина сегмента: "+str(len(seg)))
-        info_vals.append(higuchi_fd(seg, id, w + 1, num_k, kmax=kmax))
+        info_vals.append(higuchi_fd(seg, id, w + 1, num_k, is_plot, kmax=kmax))
         centers.append((a + b) // 2)
     return np.array(centers), np.array(info_vals)
 
@@ -307,8 +307,11 @@ def write_average_HFD_values_for_each_age_range(sex, num_k, kmax, window_step, h
                                                                                                                    num_k,
                                                                                                                    kmax,
                                                                                                                    window_step)
-
-
+    elif time_series_type == 'hrv_AIC_ecg':
+        file_path = 'output/hrv/{0}_HFD_HRV_AIC_ECG_calculated_num_k_is_{1}_kmax_is_{2}_window_step_is_{3}.csv'.format(sex,
+                                                                                                                   num_k,
+                                                                                                                   kmax,
+                                                                                                                   window_step)
 
     with open(file_path, 'w', newline='') as csvfile:
         spamwriter = csv.writer(csvfile, delimiter=';',
@@ -580,6 +583,7 @@ def load_id_to_hfd(kmax, step_cycle, num_k, method):
 
 def load_id_to_hfd(sex, kmax, window_step, num_k, method, time_series_type):
 
+    is_AIC_linear_less_than_quadratic = False
 
     file_path = None
 
@@ -591,7 +595,12 @@ def load_id_to_hfd(sex, kmax, window_step, num_k, method, time_series_type):
         file_path = 'output/hrv/{0}_HFD_HRV_ECG_calculated_num_k_is_{1}_kmax_is_{2}_window_step_is_{3}.csv'.format(sex,
                                                                                                                    num_k,
                                                                                                                    kmax, window_step)
-
+    elif time_series_type =='hrv_AIC_ecg':
+        file_path = 'output/hrv/{0}_HFD_HRV_ECG_calculated_num_k_is_{1}_kmax_is_{2}_window_step_is_{3}.csv'.format(sex,
+                                                                                                                   num_k,
+                                                                                                                   kmax,
+                                                                                                                   window_step)
+        is_AIC_linear_less_than_quadratic = True
     import pandas as pd
 
     # читаем CSV
@@ -609,20 +618,53 @@ def load_id_to_hfd(sex, kmax, window_step, num_k, method, time_series_type):
     id_to_hfd = {}
 
     higuches = []
-    # пример обхода по группам
-    for idx, group in enumerate(groups, start=1):
-        print(f"\n=== Group {idx} ===")
-        print("Columns:", group)
 
-        # достать данные конкретной группы
-        #sub_df = df[fixed_cols + group]
-        higuches.append(df[group[2]]) #Only HFD for selected group
+    if is_AIC_linear_less_than_quadratic:
+        # пример обхода по группам
+        for idx, group in enumerate(groups, start=1):
+            print(f"\n=== Group {idx} ===")
+            print("Columns:", group)
 
-        # info[i][0] - i-th window k parameter
-        # info[i][1] - i-th window b parameter
-        # info[i][2] - i-th window D parameter
-        # info[i][3] - i-th window R_square parameter
-        # info[i][3] - i-th window p-value parameter
+            hig = []
+            for i in range(len(df["id"])):
+
+                attr_1 = group[5]
+                attr_2 = group[11]
+                AIC_linear = float(df[attr_1][i])
+                AIC_quadr = float(df[attr_2][i])
+                if AIC_linear < AIC_quadr:
+                    hig.append(float(df[group[2]][i] ))
+            higuches.append(hig)
+               # higuches.append(df[group[2]])
+
+            # достать данные конкретной группы
+            # sub_df = df[fixed_cols + group]
+            higuches.append(df[group[2]])  # Only HFD for selected group
+
+            # info[i][0] - i-th window k parameter
+            # info[i][1] - i-th window b parameter
+            # info[i][2] - i-th window D parameter
+            # info[i][3] - i-th window R_square parameter
+            # info[i][3] - i-th window p-value parameter
+    else:
+        # пример обхода по группам
+        for idx, group in enumerate(groups, start=1):
+            print(f"\n=== Group {idx} ===")
+            print("Columns:", group)
+
+
+
+
+            # достать данные конкретной группы
+            #sub_df = df[fixed_cols + group]
+            attr = group[2]
+            higuches.append(df[attr]) #Only HFD for selected group
+
+                # info[i][0] - i-th window k parameter
+                # info[i][1] - i-th window b parameter
+                # info[i][2] - i-th window D parameter
+                # info[i][3] - i-th window R_square parameter
+                # info[i][3] - i-th window p-value parameter
 
     for i in range(len(higuches[0])): #
         higuches_line = []
