@@ -618,7 +618,7 @@ def load_id_to_hfd(sex, kmax, window_step, num_k, method, time_series_type):
     id_to_hfd = {}
 
     higuches = []
-
+    masks = []
     if is_AIC_linear_less_than_quadratic:
         # пример обхода по группам
         for idx, group in enumerate(groups, start=1):
@@ -626,6 +626,7 @@ def load_id_to_hfd(sex, kmax, window_step, num_k, method, time_series_type):
             print("Columns:", group)
 
             hig = []
+            mask = np.zeros(len(df["id"]))
             for i in range(len(df["id"])):
 
                 attr_1 = group[5]
@@ -634,7 +635,9 @@ def load_id_to_hfd(sex, kmax, window_step, num_k, method, time_series_type):
                 AIC_quadr = float(df[attr_2][i])
                 if AIC_linear < AIC_quadr:
                     hig.append(float(df[group[2]][i] ))
+                    mask[i] = 1
             higuches.append(hig)
+            masks.append(mask)
                # higuches.append(df[group[2]])
 
             # достать данные конкретной группы
@@ -724,23 +727,8 @@ def load_id_to_hfd(sex, kmax, window_step, num_k, method, time_series_type):
     return 
     """
 
-def age_range_agregation (id_to_hfd, id_ageRangeIndex_dict):
-    """Create {'age_range': mean_hfd'} dictionary"""
 
-    print(id_ageRangeIndex_dict)
 
-    # Сначала группируем HFD по age_range
-    age_to_hfds = defaultdict(list)
-    for id_, age_range in id_ageRangeIndex_dict.items():
-        if id_ in id_to_hfd:  # проверка, чтобы id существовал в HFD
-            age_to_hfds[age_range].append(id_to_hfd[id_])
-
-    # Затем считаем среднее для каждого age_range
-    age_to_mean_hfd = {age: float(np.mean(hfds)) for age, hfds in age_to_hfds.items()}
-
-    print(age_to_mean_hfd)
-
-    return age_to_mean_hfd
 
 def age_range_agregation_count (id_to_hfd, id_ageRangeIndex_dict):
     """Create {'age_range': mean_hfd'} dictionary"""
@@ -770,8 +758,9 @@ def write_different_sexes(id_to_hfd, num_k, kmax, step_cycle, method, time_serie
 
     male_id_ageRangeIndex_dict, female_id_ageRangeIndex_dict = m2.get_age_ranges_for_male_and_female(keys, male_ids, female_ids)
 
-    male_age_range_to_mean_hfd = age_range_agregation(id_to_hfd, male_id_ageRangeIndex_dict)
-    female_age_range_to_mean_hfd = age_range_agregation(id_to_hfd, female_id_ageRangeIndex_dict)
+    m2.get_age_category_to_ids_dictionary()
+    male_age_range_to_mean_hfd = m2.age_range_agregation(id_to_hfd, male_id_ageRangeIndex_dict)
+    female_age_range_to_mean_hfd = m2.age_range_agregation(id_to_hfd, female_id_ageRangeIndex_dict)
 
     #male_age_range_to_count = age_range_agregation_count(id_to_hfd, male_id_ageRangeIndex_dict)
     #female_age_range_to_count = age_range_agregation_count(id_to_hfd, female_id_ageRangeIndex_dict)

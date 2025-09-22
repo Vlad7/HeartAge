@@ -250,7 +250,7 @@ def get_age_ranges_for_male_and_female(keys, male_ids_list, female_ids_list):
 
     return male_id_ageRangeIndex_dict, female_id_ageRangeIndex_dict
 
-def find_male_and_female_HFD_dictionaries(id_to_hfd, male_ids_list, female_ids_list):
+def find_male_and_female_id_to_hfd(id_to_hfd, male_ids_list, female_ids_list):
     # Фильтруем ECG_1_RR_intervals_HFD_dictionary, оставляя только те записи, у которых ключи есть в male_age_dict
     male_HFD_dict = {k: id_to_hfd[k] for k in male_ids_list if
                      k in id_to_hfd}
@@ -271,7 +271,7 @@ def calculate_linear_regression(RR_intervals_time_series_of_each_ECG, ECG_1_RR_i
         get_age_ranges_for_male_and_female(RR_intervals_time_series_of_each_ECG.keys(), male_ids_list, female_ids_list))
 
     # Фильтруем ECG_1_RR_intervals_HFD_dictionary, оставляя только те записи, у которых ключи есть в male_age_dict
-    male_HFD_dict, female_HFD_dict = find_male_and_female_HFD_dictionaries(RR_intervals_time_series_of_each_ECG, male_ids_list, female_ids_list)
+    male_HFD_dict, female_HFD_dict = find_male_and_female_id_to_hfd(RR_intervals_time_series_of_each_ECG, male_ids_list, female_ids_list)
 
 
     print("Female")
@@ -381,8 +381,8 @@ def find_biological_age(sex, age_category_ids_dict, HFD_dictionary, slope, inter
 def get_average_age(age_range):
 
 
-        min_age, max_age = map(int, age_range.split(" - "))
-        return (min_age + max_age) / 2
+    min_age, max_age = map(int, age_range.split(" - "))
+    return (min_age + max_age) / 2
 
 #if (RECORDS_COUNT_PER_EACH_AGE_GROUP.keys().__contains__(age_groups[row[1]])):
 #    RECORDS_COUNT_PER_EACH_AGE_GROUP[age_groups[row[1]]] += 1
@@ -616,42 +616,59 @@ def estimate_biological_age_by_regression_line(hfd, slope, intercept):
 
 
 
-def get_ids_of_age_range_from_ageRange_dictionary(age_range_indexes):
-    """From dictionary with ages as keys and age ranges as values get new dictionary with
-    age ranges as keys and respective list of id's"""
+def get_age_category_to_ids_dictionary(id_to_age_category):
+    """From dictionary with ids as keys and age range as values get new dictionary with
+    age range as key and respective list of id's"""
 
     # Dictionary with id's for each age category
-    age_category_ids_dict = {}
+    age_category_ids_dict = defaultdict(list) # = {} for simple dictionary
 
-    for id in age_range_indexes.keys():
 
-        age_category = age_range_indexes[id]
+    for id_, age_category in id_to_age_category.items():
 
-        if age_category_ids_dict.keys().__contains__(age_category):
-            age_category_ids_dict[age_category].append(id)
-        else:
-            age_category_ids_dict[age_category] = [id]
+        age_category_ids_dict[age_category].append(id)
+        #For defaultdict(list) upper row is equivalent to below four rows
+        #if age_category_ids_dict.keys().__contains__(age_category):
+        #    age_category_ids_dict[age_category].append(id)
+        #else:
+        #    age_category_ids_dict[age_category] = [id]
 
     return age_category_ids_dict
 
-def HFD_average_by_age_range(age_category_ids_dict, ECG_1_RR_intervals_HFD_dictionary):
-    """Calculate average HFD value by each age range"""
 
-    HFD_average_by_age_range = {}
+def HFD_average_by_age_range(age_category_to_ids_dict, ECG_id_to_RR_intervals_HFD_dictionary):
+    """Calculate average HFD value by each age range
 
-    for age_category in age_category_ids_dict.keys():
+        input:
+            age_category_to_ids_dict - dictionary with age category as key and id's list as value
+            ECG_id_to_RR_intervals_HFD_dictionary - dictionary with id as key and RR-intervals HFD as value
+        output:
+            age_range_to_average_HFD - dictionary with age category as key and average HFD as value
+    """
 
-        HFD_1_summ = 0
-        # HFD_2_average = 0
+    age_category_to_average_HFD = {}
 
-        for id in age_category_ids_dict[age_category]:
-            HFD_1_summ += ECG_1_RR_intervals_HFD_dictionary[id]
+    for age_category in age_category_to_ids_dict.keys():
+
+        HFD_summ = 0
+
+        ids_list = age_category_to_ids_dict[age_category]
+        for id in ids_list:
+            if id in ECG_id_to_RR_intervals_HFD_dictionary.keys():
+                HFD_summ += ECG_id_to_RR_intervals_HFD_dictionary[id]
             # HFD_2_average += dictionary_HFD_ECG_1_2[age_range_key][1]
 
-        length_of_age_category_ids_list = len(age_category_ids_dict[age_category])
-        HFD_average_by_age_range[age_category] = HFD_1_summ / length_of_age_category_ids_list
+        age_category_to_average_HFD[age_category] = HFD_summ / len(ids_list)
 
-    return HFD_average_by_age_range
+    return age_category_to_average_HFD
+
+
+def age_range_agregation(id_to_hfd, id_ageRangeIndex_dict):
+    age_category_ids_dict = m2.get_age_category_to_ids_dictionary(id_ageRangeIndex_dict)
+
+    age_category_to_average_HFD = HFD_average_by_age_range(age_category_ids_dict, id_to_hfd)
+    return age_category_to_average_HFD
+
 
 def localize_floats(row):
     """Replace . by , in float"""
@@ -1494,10 +1511,10 @@ def find_consecutive_breaks(points):
     # Append the last range
     consecutive_ranges.append((start, prev))
     return consecutive_ranges
+    """Create breaks file"""
 
 
 def create_breaks_file(sequence_1, sequence_2):
-    """Create breaks file"""
     f = open("breaked_list/breaks_new.txt", "a")
 
     breaks_1, breaks_2 = test_record_for_breaks(sequence_1, sequence_2)
@@ -2419,8 +2436,30 @@ def plot_RR_intervals_time_series(rr_intervals, first_time=40000, second_time=54
 
 
 
+def calculate_zigzag_bio_age(male_model_age_range_to_average_HFD, male_test_dataset, male_id_to_hfd):
 
+    MAE = 0
+    for age_range, ids in male_test_dataset.items():
+        age = get_average_age(age_range)
+        for id in ids:
+            predicted_age_category = find_nearest_age_category(male_model_age_range_to_average_HFD, male_id_to_hfd[id])
+            predicted_age = get_average_age(predicted_age_category)
+            MAE += np.abs(predicted_age - age)
 
+    return MAE
+    # print(id_to_hfd)
+
+def find_nearest_age_category(male_model_age_range_to_average_HFD, patient_hfd):
+
+    min_diff = 1000
+    min_age_range = male_model_age_range_to_average_HFD.keys()[0]
+    for age_range, hfd in male_model_age_range_to_average_HFD:
+        diff = np.abs(hfd - patient_hfd)
+        if diff < min_diff:
+            min_diff = diff
+            min_age_range = age_range
+
+    return min_age_range
 
 if __name__ == '__main__':
 
@@ -2470,7 +2509,7 @@ if __name__ == '__main__':
 
 
 
-    should_additionally_cat_minutes_points = total_minutes_points_from_ECG_start - expected_minutes_points_that_ECG_waited
+    #should_additionally_cat_minutes_points = total_minutes_points_from_ECG_start - expected_minutes_points_that_ECG_waited
 
     ################################## Find length of all ECGs and save to CSV file ###################################
 
@@ -2562,7 +2601,7 @@ if __name__ == '__main__':
     #create_full_ECG_id_to_info_file(kmax, step_cycle, num_k)
     methods = ['average', 'median', 'trimmed_mean']
     method = methods[0]
-    k_max_values = range(20, 45, 1)
+    k_max_values = range(20, 21, 1)
     num_k_value = 50
     for k_max in k_max_values:
         #Id to hfd values
@@ -2576,11 +2615,20 @@ if __name__ == '__main__':
 
         male_id_ageRangeIndex_dict, female_id_ageRangeIndex_dict = get_age_ranges_for_male_and_female(keys, male_ids,
                                                                          female_ids)
-        male_id_to_hfd = {id: id_to_hfd[id] for id in male_ids if id in id_to_hfd.keys()}
-        female_id_to_hfd = {id: id_to_hfd[id] for id in female_ids if id in id_to_hfd.keys()}
+
+
+        male_id_to_hfd, female_id_to_hfd = find_male_and_female_id_to_hfd(id_to_hfd, male_ids, female_ids)
+
+        male_age_category_to_ids_dict = get_age_category_to_ids_dictionary(male_id_ageRangeIndex_dict)
+        male_train_dataset, male_test_dataset = split_rr_intervals_on_train_and_test_datasets(male_age_category_to_ids_dict)
+
+
+        male_model_age_range_to_average_HFD = male_HFD_average_by_age_range(male_train_dataset, male_id_to_hfd)
+        MAE = calculate_zigzag_bio_age(male_model_age_range_to_average_HFD, male_test_dataset, male_id_to_hfd)
+        print(MAE)
         #print(id_to_hfd)
 
-        hpar.write_different_sexes(id_to_hfd, num_k_value, k_max, None, method, 'hrv_AIC_ecg')
+        #hpar.write_different_sexes(id_to_hfd, num_k_value, k_max, None, method, 'hrv_AIC_ecg')
 
 
 
