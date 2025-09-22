@@ -250,7 +250,16 @@ def get_age_ranges_for_male_and_female(keys, male_ids_list, female_ids_list):
 
     return male_id_ageRangeIndex_dict, female_id_ageRangeIndex_dict
 
+def find_male_and_female_HFD_dictionaries(id_to_hfd, male_ids_list, female_ids_list):
+    # Фильтруем ECG_1_RR_intervals_HFD_dictionary, оставляя только те записи, у которых ключи есть в male_age_dict
+    male_HFD_dict = {k: id_to_hfd[k] for k in male_ids_list if
+                     k in id_to_hfd}
 
+    # Фильтруем ECG_1_RR_intervals_HFD_dictionary, оставляя только те записи, у которых ключи есть в male_age_dict
+    female_HFD_dict = {k: id_to_hfd[k] for k in female_ids_list if
+                       k in id_to_hfd}
+
+    return male_HFD_dict, female_HFD_dict
 
 def calculate_linear_regression(RR_intervals_time_series_of_each_ECG, ECG_1_RR_intervals_HFD_dictionary):
     """Calculate linear regression method.
@@ -262,12 +271,8 @@ def calculate_linear_regression(RR_intervals_time_series_of_each_ECG, ECG_1_RR_i
         get_age_ranges_for_male_and_female(RR_intervals_time_series_of_each_ECG.keys(), male_ids_list, female_ids_list))
 
     # Фильтруем ECG_1_RR_intervals_HFD_dictionary, оставляя только те записи, у которых ключи есть в male_age_dict
-    male_HFD_dict = {k: ECG_1_RR_intervals_HFD_dictionary[k] for k in male_ids_list if
-                              k in ECG_1_RR_intervals_HFD_dictionary}
+    male_HFD_dict, female_HFD_dict = find_male_and_female_HFD_dictionaries(RR_intervals_time_series_of_each_ECG, male_ids_list, female_ids_list)
 
-    # Фильтруем ECG_1_RR_intervals_HFD_dictionary, оставляя только те записи, у которых ключи есть в male_age_dict
-    female_HFD_dict = {k: ECG_1_RR_intervals_HFD_dictionary[k] for k in female_ids_list if
-                       k in ECG_1_RR_intervals_HFD_dictionary}
 
     print("Female")
     female_slope, female_intercept = linear_regression('Female', female_HFD_dict, female_id_ageRangeIndex_dict)
@@ -553,9 +558,9 @@ def linear_regression(sex, ECG_1_RR_intervals_HFD_dictionary, id_ageRange_dict):
     }"""
 
     # Функция для вычисления среднего возраста из диапазона
-    def get_average_age(group_key):
-        if group_key in age_groups:
-            age_range = age_groups[group_key]
+    def get_average_age(age_group_key):
+        if age_group_key in age_groups:
+            age_range = age_groups[age_group_key]
             min_age, max_age = map(int, age_range.split(" - "))
             return (min_age + max_age) / 2
         return None
@@ -2319,7 +2324,8 @@ def preprocess_rr_intervals(rr_intervals, mode="fixed_count", count=440, duratio
 
 def split_rr_intervals_on_train_and_test_datasets(age_ranges_ids_dictionary):
 
-    """Split age_ranges_id's dictionary for train and test datasets"""
+    """Split age_range_to_id's dictionary for train and test datasets.
+       Split each age_range."""
     """    
     # Исходные данные
     #data = {
@@ -2561,8 +2567,18 @@ if __name__ == '__main__':
     for k_max in k_max_values:
         #Id to hfd values
         id_to_hfd = hpar.load_id_to_hfd('both_sexes', k_max, None, num_k_value, method, 'hrv_AIC_ecg')  # 'average' or 'median'
-    
-    #print(id_to_hfd)
+
+        keys = id_to_hfd.keys()
+        male_ids, female_ids = classify_ids_by_sex(keys)
+
+        print(male_ids)
+        print(female_ids)
+
+        male_id_ageRangeIndex_dict, female_id_ageRangeIndex_dict = get_age_ranges_for_male_and_female(keys, male_ids,
+                                                                         female_ids)
+        male_id_to_hfd = {id: id_to_hfd[id] for id in male_ids if id in id_to_hfd.keys()}
+        female_id_to_hfd = {id: id_to_hfd[id] for id in female_ids if id in id_to_hfd.keys()}
+        #print(id_to_hfd)
 
         hpar.write_different_sexes(id_to_hfd, num_k_value, k_max, None, method, 'hrv_AIC_ecg')
 
