@@ -12,17 +12,15 @@ from scipy import stats
 import statsmodels.api as sm
 from statsmodels.stats.diagnostic import linear_reset
 
-#Folder with files in each there is cleaned_signal time series
 
+#Folder with files in each there is cleaned signal time series
 cleaned_signal_folder="../dataset/autonomic-aging-a-dataset-to-quantify-changes-of-cardiovascular-autonomic-function-during-healthy-aging-1.0.0/cleaned_signal"
-
 
 #Folder with files in each there is r_peaks time series
 r_peaks_folder="r_peaks"
 
 def list_files_with_cleaned_signal():
-    """Get list of files with cleaned_signal time series from cleaned_signal"""
-    import os
+    """Get list of files with cleaned_signal time series from cleaned_signal folder"""
 
     directory = cleaned_signal_folder
 
@@ -35,8 +33,7 @@ def list_files_with_cleaned_signal():
     return files
 
 def list_files_with_r_peaks():
-    """Get list of files with cleaned_signal time series from cleaned_signal"""
-    import os
+    """Get list of files with r_peaks time series from r_peaks folder"""
 
     directory = r_peaks_folder
 
@@ -53,8 +50,8 @@ def extract_from_file_cleaned_signal_time_series(file):
     """Extract from files RR intervals time series
 
         input: files - file names
-        output: rr_time_series_dictionary - dictionary with id as key and list of RR-intervals as value"""
-
+        output: index - id of ECG record
+                cleaned_signal - list of points of cleaned ECG signal"""
 
     filename = file
 
@@ -83,7 +80,7 @@ def extract_from_file_cleaned_signal_time_series(file):
         return index, cleaned_signal
 
     else:
-        print("Индекс не найден")
+        print("Index was not found")
         return None, None
 
 
@@ -92,9 +89,8 @@ def extract_from_file_r_peaks_time_series(id, r_peaks_file):
     """Extract from file R peaks time series
 
         input: id - corresponding to clean and r_peaks
+                r_peaks_file - filename of file with r_peaks
         output: r_peaks - list with R-peaks as value"""
-
-
 
     if id in r_peaks_file:
         #print("Индекс:", index)
@@ -117,12 +113,17 @@ def extract_from_file_r_peaks_time_series(id, r_peaks_file):
             return r_peaks
 
     else:
-        print("Индекс не найден")
+        print("Index was not found")
         return None
 
 
 
 def zscore_normalize(x):
+    """Z score normalization.
+        input:
+            x - time series of ECG points
+        output:
+            normalized signal"""
     mu = np.mean(x)
     sigma = np.std(x)
     if sigma == 0:
@@ -131,9 +132,32 @@ def zscore_normalize(x):
 
 
 
-def higuchi_fd(seg, id, window, num_k, is_plot, kmax):
-    #HFD = HiguchiFractalDimension.hfd(seg, opt=True,
-    #                                    k_max=
+def higuchi_fd(seg, record_id, window_number, num_k, is_plot, kmax):
+    """Function for calculating higuchi fractal dimension.
+        input:
+            seg - segment of ECG or HRV data
+            record_id - id of ECG record
+            window_number - number of window
+            num_k - number of k values
+            is_plot - to plot residuals and linear and quadratic approximation
+            kmax - kmax value for higuchi fractal dimension
+
+        output:
+            result - dictionary with result, where keys:
+                     k - slope of linear regression
+                     b - intercept of linear regression
+                     D - higuchi fractal dimension
+                     p-value linear - p-value of linear model
+                     R_score - R_score of linear model
+                     AIC_linear - Akaike criteria of linear model
+                     kef x^2 - coefficient of quadratic model near x^2
+                     kef x - - coefficient of quadratic model near x
+                     kef 1 - - coefficient of quadratic model near 1
+                     p-value quadr - p-value of quadratic model
+                     R_score quadr - R score of quadratic model
+                     AIC_quadr - Akaike criteria of quadratic model
+
+        """
 
     k, L = HiguchiFractalDimension.curve_length(seg, opt=True, num_k=num_k, k_max=kmax)
 
@@ -162,15 +186,31 @@ def higuchi_fd(seg, id, window, num_k, is_plot, kmax):
 
         plt.xlabel("log2(k)")
         plt.ylabel("log2(L(k))")
-        plt.title("Higuchi Fractal Dimension (log-log) Id = {0}, window = {1}".format(id, window))
+        plt.title("Higuchi Fractal Dimension (log-log) Id = {0}, window = {1}".format(record_id, window_number))
         plt.legend()
         plt.grid(True, ls="--", alpha=0.6)
         plt.show()
 
-    return [k, b, hfd, p_linear, lin_model_rsquared, lin_model_aic, kefs[2], kefs[1], kefs[0], p_squared, quadr_model_rsquared, quadr_model_aic]
+    result = {}
+
+    result['k'] = k
+    result['b'] = b
+    result['D'] = hfd
+    result['p-value linear'] = p_linear
+    result['R_score'] = lin_model_rsquared
+    result['AIC_linear'] = lin_model_aic
+    result['kef x^2'] = kefs[2]
+    result['kef x'] = kefs[1]
+    result['kef 1'] = kefs[0]
+    result['p-value quadr'] = p_squared
+    result['R_score quadr'] = quadr_model_rsquared
+    result['AIC_quadr'] = quadr_model_aic
+
+    return result
 
 
 def linear_regression(x, y, is_plot):
+    """Build linear regression model"""
     res = stats.linregress(x, y)
 
     ########### Строим линейную модель ###########
@@ -192,8 +232,6 @@ def linear_regression(x, y, is_plot):
     #p_intercept = p_values[0]
     #p_slope = p_values[1]
 
-
-
     # RESET тест (по умолчанию квадратичные и кубические термины)
     reset_test = linear_reset(model_lin, power=2, use_f=True)
     print("RESET-тест линейная модель:", reset_test)
@@ -213,14 +251,11 @@ def linear_regression(x, y, is_plot):
     return y_pred, k, b, hfd, p_value, model_lin.rsquared, model_lin.aic
 
 def quadratic_regression(x, y, is_plot):
+    """Build qudratic model"""
 
     #coeffs = np.polyfit(x, y, deg=2)
     #y_quadro_predicted = np.polyval(coeffs, x)
     #y_quadro_predicted = coeffs[0] *x * x + coeffs[1]*x + coeffs[2]
-
-
-
-
 
     ########### квадратичная модель
     X_quad = sm.add_constant(np.column_stack([x, x ** 2]))
@@ -244,7 +279,7 @@ def quadratic_regression(x, y, is_plot):
     # L = np.array([...])
 
 
-    # R^2
+
     if is_plot:
         plt.scatter(x, residuals_quad, color="blue")
         plt.axhline(0, color="red", linestyle="--")
@@ -258,7 +293,7 @@ def quadratic_regression(x, y, is_plot):
 
 
 
-def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray,is_plot, id, num_k : int = 50, n_cycles: int = 100, step_cycles: int = 20,  kmax: int = 10, ):
+def windowed_hfd_cycles(x: np.ndarray, rpeaks_idx: np.ndarray, is_plot, id, num_k : int = 50, n_cycles: int = 100, step_cycles: int = 20,  kmax: int = 10, ):
     """
     Оконный HFD по фиксированному числу сердечных циклов.
     rpeaks_idx: индексы R-пиков в отсчетах (возрастающий массив)
@@ -357,22 +392,23 @@ def write_HFD_calculated_info_to_csv(sex, time_series_type, id, info, kmax, wind
         list = [id]
 
         for i in range(0, windows_count, 1):
-            # info[i][0] - i-th window k parameter
-            # info[i][1] - i-th window b parameter
-            # info[i][2] - i-th window D parameter
-            # info[i][3] - i-th window p-value linear parameter
-            # info[i][4] - i-th window R_square parameter
-            # info[i][5] - i-th window AIC parameter
-            # info[i][6] - i-th window ax^2 parameter
-            # info[i][7] - i-th window by parameter
-            # info[i][8] - i-th window c parameter
-            # info[i][9] - i-th window p-value squared parameter
-            # info[i][10] - i-th window R_square quad
-            # info[i][11] - i-th window AIC quad
+            # info[i]['k'] - i-th window k parameter
+            # info[i]['b'] - i-th window b parameter
+            # info[i]['D'] - i-th window D parameter
+            # info[i]['p-value linear'] - i-th window p-value linear parameter
+            # info[i]['R_score'] - i-th window R_square parameter
+            # info[i]['AIC_linear'] - i-th window AIC parameter
+            # info[i]['kef x^2'] - i-th window ax^2 parameter
+            # info[i]['kef x'] - i-th window by parameter
+            # info[i]['kef 1'] - i-th window c parameter
+            # info[i]['p-value quadr'] - i-th window p-value squared parameter
+            # info[i]['R_score quadr'] - i-th window R_square quad
+            # info[i]['AIC_quadr'] - i-th window AIC quad
 
-            list += [f"{info[i][0]:.3f}", f"{info[i][1]:.3f}", f"{info[i][2]:.3f}", f"{info[i][3]:.25f}",
-                     f"{info[i][4]:.3f}", f"{info[i][5]:.3f}", f"{info[i][6]:.3f}", f"{info[i][7]:.3f}",
-                     f"{info[i][8]:.3f}", f"{info[i][9]:.25f}", f"{info[i][10]:.3f}", f"{info[i][11]:.3f}"]
+
+            list += [f"{info[i]['k']:.3f}", f"{info[i]['b']:.3f}", f"{info[i]['D']:.3f}", f"{info[i]['p-value linear']:.25f}",
+                     f"{info[i]['R_score']:.3f}", f"{info[i]['AIC_linear']:.3f}", f"{info[i]['kef x^2']:.3f}", f"{info[i]['kef x']:.3f}",
+                     f"{info[i]['kef 1']:.3f}", f"{info[i]['p-value quadr']:.25f}", f"{info[i]['R_score quadr']:.3f}", f"{info[i]['AIC_quadr']:.3f}"]
 
         spamwriter.writerow(list)
 
@@ -394,6 +430,8 @@ def find_maximum_id_in_full_ECG_id_to_info_file(kmax, step_cycle):
     """If you open csv file with full ECG id to info parameters, it finds id of row with maximum id
 
         output: id
+
+        WARNING!!! EDIT!
     """
 
     file_path = 'output/{0}_HFD_all_ECG_calculated_kmax_is_{1}_step_cycle_{2}.csv'.format("both_sexes", kmax, step_cycle)
@@ -515,7 +553,7 @@ def load_id_to_hfd(kmax, step_cycle, num_k, method):
 
     id_to_hfd = {}
 
-    higuches = []
+    higuches_matrix = []
     # пример обхода по группам
     for idx, group in enumerate(groups, start=1):
         print(f"\n=== Group {idx} ===")
@@ -523,7 +561,7 @@ def load_id_to_hfd(kmax, step_cycle, num_k, method):
 
         # достать данные конкретной группы
         #sub_df = df[fixed_cols + group]
-        higuches.append(df[group[2]]) #Only HFD for selected group
+        higuches_matrix.append(df[group[2]]) #Only HFD for selected group
 
         # info[i][0] - i-th window k parameter
         # info[i][1] - i-th window b parameter
@@ -531,10 +569,10 @@ def load_id_to_hfd(kmax, step_cycle, num_k, method):
         # info[i][3] - i-th window R_square parameter
         # info[i][3] - i-th window p-value parameter
 
-    for i in range(len(higuches[0])): #
+    for i in range(len(higuches_matrix[0])): #
         higuches_line = []
-        for j in range(len(higuches)):
-            higuches_line.append(higuches[j][i])
+        for j in range(len(higuches_matrix)):
+            higuches_line.append(higuches_matrix[j][i])
 
         higuches_line_float = higuches_line
 
@@ -582,7 +620,8 @@ def load_id_to_hfd(kmax, step_cycle, num_k, method):
 
 
 def load_id_to_hfd(sex, kmax, window_step, num_k, method, time_series_type):
-
+    """Create id to hfd dictionary. 
+        is_AIC_linear_less_than_quadratic - load only HFD's of records, where AIC of linear model less than quadratic"""
     is_AIC_linear_less_than_quadratic = False
 
     file_path = None
@@ -601,169 +640,159 @@ def load_id_to_hfd(sex, kmax, window_step, num_k, method, time_series_type):
                                                                                                                    kmax,
                                                                                                                    window_step)
         is_AIC_linear_less_than_quadratic = True
+
+    """Let to be for future maybe (old version)
+            with open('output/both_sexes_HFD_all_ECG_calculated.csv', newline='') as csvfile:
+                spamreader = csv.DictReader(csvfile, delimiter=';', quotechar='|')
+                for row in spamreader:
+                    id_ = f"{int(row['id']):04d}"
+                    hfd_value = float(row['HFD'])  # если числа с запятой
+                    id_to_hfd[id_] = hfd_value
+            return 
+    """
     import pandas as pd
 
-    # читаем CSV
+    # Read CSV
     df = pd.read_csv(file_path,sep=";")
 
-    # фиксированные колонки (которые не группируются)
+    # Fixed columns, that are not grouped
     fixed_cols = ["id"]
 
-    # все остальные (которые идут пятёрками)
+    # All others that goes by 12
     other_cols = [c for c in df.columns if c not in fixed_cols]
 
-    # разбиваем на группы по 5
+    # Divide into groups of 5
     groups = [other_cols[i:i + 12] for i in range(0, len(other_cols), 12)]
+
+    higuches_matrix = [] #Matrix of higuches with columns as groups and rows as rows of dataset
+
+
+    #  Cycle by groups
+    for idx, group in enumerate(groups, start=1):
+        print(f"\n=== Group {idx} ===")
+        print("Columns:", group)
+
+        if is_AIC_linear_less_than_quadratic:
+
+            higuchi_column = []
+            
+            for i in range(len(df[fixed_cols])):
+
+                AIC_linear_attr = group[5] #AIC_linear
+                AIC_quadr_attr = group[11] #AIC_quadr
+                AIC_linear = float(df[AIC_linear_attr][i])
+                AIC_quadr = float(df[AIC_quadr_attr][i])
+                if AIC_linear <= AIC_quadr:
+                    higuchi_column.append(float(df[group[2]][i]))  # Only HFD for selected group
+                else:
+                    higuchi_column.append(0) #Otherwise
+
+            higuches_matrix.append(higuchi_column)
+
+            # Get data of the same group
+            # sub_df = df[fixed_cols + group]
+        else:
+            
+            # Get data of the same group
+            #sub_df = df[fixed_cols + group]
+            hfd_attribute = group[2]
+            higuches_matrix.append(df[hfd_attribute]) #Only HFD for selected group
+
+    higuches_matrix = np.array(higuches_matrix)
+    higuches_dataframe = pd.DataFrame(higuches_matrix)
+    normal_higuches_dataframe = higuches_dataframe.T
 
     id_to_hfd = {}
 
-    higuches = []
-    masks = []
     if is_AIC_linear_less_than_quadratic:
-        # пример обхода по группам
-        for idx, group in enumerate(groups, start=1):
-            print(f"\n=== Group {idx} ===")
-            print("Columns:", group)
 
-            hig = []
-            mask = np.zeros(len(df["id"]))
-            for i in range(len(df["id"])):
+        # Filter: leave only those without zeros
 
-                attr_1 = group[5]
-                attr_2 = group[11]
-                AIC_linear = float(df[attr_1][i])
-                AIC_quadr = float(df[attr_2][i])
-                if AIC_linear < AIC_quadr:
-                    hig.append(float(df[group[2]][i] ))
-                    mask[i] = 1
-            higuches.append(hig)
-            masks.append(mask)
-               # higuches.append(df[group[2]])
+        df_ids_selected = df[fixed_cols][(normal_higuches_dataframe != 0).all(axis=1)].reset_index(drop=True)
+        df_hfd_selected = normal_higuches_dataframe[(normal_higuches_dataframe != 0).all(axis=1)].reset_index(drop=True)
 
-            # достать данные конкретной группы
-            # sub_df = df[fixed_cols + group]
-            higuches.append(df[group[2]])  # Only HFD for selected group
-
-            # info[i][0] - i-th window k parameter
-            # info[i][1] - i-th window b parameter
-            # info[i][2] - i-th window D parameter
-            # info[i][3] - i-th window R_square parameter
-            # info[i][3] - i-th window p-value parameter
+        for idx, row in df_hfd_selected.iterrows():
+            id_val = f"{df_ids_selected.loc[idx, 'id']:04d}"
+            # row_point = [float(x.replace(",", ".")) for x in row]
+            id_to_hfd[id_val] = calculate_higuchi_from_few_windows(row, method)
     else:
-        # пример обхода по группам
-        for idx, group in enumerate(groups, start=1):
-            print(f"\n=== Group {idx} ===")
-            print("Columns:", group)
-
-
-
-
-            # достать данные конкретной группы
-            #sub_df = df[fixed_cols + group]
-            attr = group[2]
-            higuches.append(df[attr]) #Only HFD for selected group
-
-                # info[i][0] - i-th window k parameter
-                # info[i][1] - i-th window b parameter
-                # info[i][2] - i-th window D parameter
-                # info[i][3] - i-th window R_square parameter
-                # info[i][3] - i-th window p-value parameter
-
-    for i in range(len(higuches[0])): #
-        higuches_line = []
-        for j in range(len(higuches)):
-            higuches_line.append(higuches[j][i])
-
-        #higuches_line_float = [float(x.replace(",", ".")) for x in higuches_line]
-        if method == 'average':
-            total_hfd = np.mean(higuches_line)
-            id_to_hfd[f"{df['id'][i]:04d}"] = total_hfd
-        elif method == 'median':
-            total_hfd = np.median(higuches_line)
-            id_to_hfd[f"{df['id'][i]:04d}"] = total_hfd
-        elif method == 'trimmed_mean':
-            # усечённое среднее 10%
-            trimmed = stats.trim_mean(higuches_line, 0.1)
-
-            id_to_hfd[f"{df['id'][i]:04d}"] = trimmed
-
-        elif mehtod == 'bootstrap_mean':
-
-            # параметры
-            B = 10000  # число бутстрэп-репликаций
-            m = len(higuches_line)
-
-            # бутстрэп
-            bootstrap_means = []
-            for _ in range(B):
-                sample = np.random.choice(higuches_line, size=m, replace=True)
-                bootstrap_means.append(np.mean(sample))
-
-            bootstrap_means = np.array(bootstrap_means)
-
-            # доверительный интервал 95%
-            ci_lower = np.percentile(bootstrap_means, 2.5)
-            ci_upper = np.percentile(bootstrap_means, 97.5)
-
-            print(f"Среднее HFD: {np.mean(higuches_line):.3f}")
-            print(f"95% доверительный интервал: [{ci_lower:.3f}, {ci_upper:.3f}]")
-
-
-
-    #print(id_to_hfd)
-        # можно обрабатывать дальше — например, сохранить отдельно
-        # sub_df.to_csv(f"group_{idx}.csv", index=False)
+        for index, row in normal_higuches_dataframe.iterrows():
+            id_val = f"{df['id'][index]:04d}"
+            # row_point = [float(x.replace(",", ".")) for x in row]
+            id_to_hfd[id_val] = calculate_higuchi_from_few_windows(row, method)
 
     return id_to_hfd
 
+def calculate_higuchi_from_few_windows(row, method):
+    if method == 'average':
+        total_hfd = np.mean(row)
+        return total_hfd
 
-    """
-    with open('output/both_sexes_HFD_all_ECG_calculated.csv', newline='') as csvfile:
-        spamreader = csv.DictReader(csvfile, delimiter=';', quotechar='|')
-        for row in spamreader:
-            id_ = f"{int(row['id']):04d}"
-            hfd_value = float(row['HFD'])  # если числа с запятой
-            id_to_hfd[id_] = hfd_value
-    return 
-    """
+    elif method == 'median':
+        total_hfd = np.median(row)
+        return total_hfd
+
+    elif method == 'trimmed_mean':
+        # усечённое среднее 10%
+        trimmed = stats.trim_mean(row, 0.1)
+        return trimmed
+
+    elif mehtod == 'bootstrap_mean':
+        """ERROR! Return values"""
+        # параметры
+        B = 10000  # число бутстрэп-репликаций
+        m = len(row)
+
+        # бутстрэп
+        bootstrap_means = []
+        for _ in range(B):
+            sample = np.random.choice(row, size=m, replace=True)
+            bootstrap_means.append(np.mean(sample))
+
+        bootstrap_means = np.array(bootstrap_means)
+
+        # доверительный интервал 95%
+        ci_lower = np.percentile(bootstrap_means, 2.5)
+        ci_upper = np.percentile(bootstrap_means, 97.5)
+
+        mean = np.mean(row)
+        print(f"Среднее HFD: {mean:.3f}")
+        print(f"95% доверительный интервал: [{ci_lower:.3f}, {ci_upper:.3f}]")
+        return [mean, ci_lower, ci_upper]
 
 
 
 
-def age_range_agregation_count (id_to_hfd, id_ageRangeIndex_dict):
+def count_by_age_range (id_ageRangeIndex_dict):
     """Create {'age_range': mean_hfd'} dictionary"""
 
-    print(id_ageRangeIndex_dict)
-
-    # Сначала группируем HFD по age_range
-    age_to_hfds = defaultdict(list)
-    for id_, age_range in id_ageRangeIndex_dict.items():
-        if id_ in id_to_hfd:  # проверка, чтобы id существовал в HFD
-            age_to_hfds[age_range].append(id_to_hfd[id_])
+    age_category_to_ids = m2.get_age_category_to_ids_dictionary(id_ageRangeIndex_dict)
 
     # Затем считаем среднее для каждого age_range
-    age_to_count = {age: len(hfds) for age, hfds in age_to_hfds.items()}
+    age_to_count = {age: len(ids) for age, ids in age_category_to_ids.items()}
 
     print(age_to_count)
 
     return age_to_count
 
 def write_different_sexes(id_to_hfd, num_k, kmax, step_cycle, method, time_series_type):
-
+    """Write information for different sexes"""
     keys = id_to_hfd.keys()
     male_ids, female_ids = m2.classify_ids_by_sex(keys)
 
     print(male_ids)
     print(female_ids)
 
-    male_id_ageRangeIndex_dict, female_id_ageRangeIndex_dict = m2.get_age_ranges_for_male_and_female(keys, male_ids, female_ids)
+    male_id_ageRangeIndex_dict, female_id_ageRangeIndex_dict = m2.get_id_to_age_range_dictionaries_for_male_and_female(keys, male_ids, female_ids, False)
 
-    m2.get_age_category_to_ids_dictionary()
+    print(male_id_ageRangeIndex_dict)
+    print(female_id_ageRangeIndex_dict)
+    #m2.get_age_category_to_ids_dictionary()
     male_age_range_to_mean_hfd = m2.age_range_agregation(id_to_hfd, male_id_ageRangeIndex_dict)
     female_age_range_to_mean_hfd = m2.age_range_agregation(id_to_hfd, female_id_ageRangeIndex_dict)
 
-    #male_age_range_to_count = age_range_agregation_count(id_to_hfd, male_id_ageRangeIndex_dict)
-    #female_age_range_to_count = age_range_agregation_count(id_to_hfd, female_id_ageRangeIndex_dict)
+    #male_age_range_to_count = count_by_age_range(male_id_ageRangeIndex_dict)
+    #female_age_range_to_count = count_by_age_range(female_id_ageRangeIndex_dict)
     #m2.write_number_of_ECGs_per_age_range_for_both_HFD("male", male_age_range_to_count)
     #m2.write_number_of_ECGs_per_age_range_for_both_HFD("female", female_age_range_to_count)
 

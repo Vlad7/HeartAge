@@ -20,8 +20,10 @@ import os
 import numpy as np
 import HiguchiFractalDimension.hfd
 import main2 as m2
+
 import re
 import os
+
 import csv
 from collections import defaultdict
 import matplotlib.pyplot as plt
@@ -30,6 +32,9 @@ import numpy as np
 from scipy import stats
 import statsmodels.api as sm
 from statsmodels.stats.diagnostic import linear_reset
+
+
+
 #<<<<<<< HEAD
 # Импортируем функцию bwr
 #=======
@@ -101,7 +106,7 @@ path_to_dataset_folder = 'D:/SCIENCE/Datasets/autonomic-aging-a-dataset-to-quant
 #path_to_dataset_folder  = 'C:/Datasets/autonomic-aging-a-dataset-to-quantify-changes-of-cardiovascular-autonomic-function-during-healthy-aging-1.0.0'
 csv_info_file = 'subject-info.csv'
 
-#Folder with files in each there is RR-intervals time series
+#Folder with files in each there is RR-intervals time series for each ECG
 rr_intervals_folder="rr_intervals/all"
 #######################################################################################################################
 
@@ -229,13 +234,24 @@ def classify_ids_by_sex(keys):
 
     return male_list, female_list
 
-def get_age_ranges_for_male_and_female(keys, male_ids_list, female_ids_list):
+def get_age_id_to_age_range_dictionary(ids, is_remotely):
     """Get age ranges for male and female"""
 
     # Dictionary with id (as key) and age range index (as value).
     id_ageRangeIndex_dict = {}
 
-    id_ageRangeIndex_dict = extract_age_ranges_from_annotation_file(keys, is_remotely=False)
+    id_ageRangeIndex_dict = extract_age_ranges_from_annotation_file(ids, is_remotely=is_remotely)
+
+    return id_ageRangeIndex_dict
+
+
+def get_id_to_age_range_dictionaries_for_male_and_female(keys, male_ids_list, female_ids_list, is_remotely):
+    """Get age ranges for male and female"""
+
+    # Dictionary with id (as key) and age range index (as value).
+    id_ageRangeIndex_dict = {}
+
+    id_ageRangeIndex_dict = get_age_id_to_age_range_dictionary(keys, is_remotely=is_remotely)
 
     print(id_ageRangeIndex_dict)
 
@@ -250,12 +266,14 @@ def get_age_ranges_for_male_and_female(keys, male_ids_list, female_ids_list):
 
     return male_id_ageRangeIndex_dict, female_id_ageRangeIndex_dict
 
+    
 def find_male_and_female_id_to_hfd(id_to_hfd, male_ids_list, female_ids_list):
-    # Фильтруем ECG_1_RR_intervals_HFD_dictionary, оставляя только те записи, у которых ключи есть в male_age_dict
+    """Find male and female id to hfd separately"""
+    # Filter id_to_hfd, leaving only those entries whose keys are in male_age_dict
     male_HFD_dict = {k: id_to_hfd[k] for k in male_ids_list if
                      k in id_to_hfd}
 
-    # Фильтруем ECG_1_RR_intervals_HFD_dictionary, оставляя только те записи, у которых ключи есть в male_age_dict
+    # Filter id_to_hfd, leaving only those entries whose keys are in female_age_dict
     female_HFD_dict = {k: id_to_hfd[k] for k in female_ids_list if
                        k in id_to_hfd}
 
@@ -268,7 +286,7 @@ def calculate_linear_regression(RR_intervals_time_series_of_each_ECG, ECG_1_RR_i
     male_ids_list, female_ids_list = classify_ids_by_sex(RR_intervals_time_series_of_each_ECG.keys())
 
     male_id_ageRangeIndex_dict, female_id_ageRangeIndex_dict = (
-        get_age_ranges_for_male_and_female(RR_intervals_time_series_of_each_ECG.keys(), male_ids_list, female_ids_list))
+        get_id_to_age_range_dictionaries_for_male_and_female(RR_intervals_time_series_of_each_ECG.keys(), male_ids_list, female_ids_list))
 
     # Фильтруем ECG_1_RR_intervals_HFD_dictionary, оставляя только те записи, у которых ключи есть в male_age_dict
     male_HFD_dict, female_HFD_dict = find_male_and_female_id_to_hfd(RR_intervals_time_series_of_each_ECG, male_ids_list, female_ids_list)
@@ -378,10 +396,10 @@ def find_biological_age(sex, age_category_ids_dict, HFD_dictionary, slope, inter
 
 
 
-def get_average_age(age_range):
+def get_average_age(age_range_index):
 
 
-    min_age, max_age = map(int, age_range.split(" - "))
+    min_age, max_age = map(int, age_groups[age_range_index].split(" - "))
     return (min_age + max_age) / 2
 
 #if (RECORDS_COUNT_PER_EACH_AGE_GROUP.keys().__contains__(age_groups[row[1]])):
@@ -626,7 +644,7 @@ def get_age_category_to_ids_dictionary(id_to_age_category):
 
     for id_, age_category in id_to_age_category.items():
 
-        age_category_ids_dict[age_category].append(id)
+        age_category_ids_dict[age_category].append(id_)
         #For defaultdict(list) upper row is equivalent to below four rows
         #if age_category_ids_dict.keys().__contains__(age_category):
         #    age_category_ids_dict[age_category].append(id)
@@ -770,15 +788,17 @@ def extract_age_ranges_from_annotation_file (ids, is_remotely=False):
     """Extract age range indexes from annotation file
 
         input:
-            ids - indexes of records
+            ids - id's of records
             is_remotely - load annotation file from the internet
             
         output:
         
-            age_ranges_dictionary - dictionary with indexes as keys and age ranges as values
+            id_to_age_range_index_dictionary - dictionary with id's as keys and age ranges as values
+
+        IS WORKING!
     """
 
-    age_ranges_dictionary = {}
+    id_to_age_range_index_dictionary = {}
 
     # Check, if dataset is remotely located
     if is_remotely:
@@ -804,7 +824,7 @@ def extract_age_ranges_from_annotation_file (ids, is_remotely=False):
             if row[0] in ids:
                 age_ranges_dictionary[row[0]] = row[1]
 
-    return age_ranges_dictionary
+    return id_to_age_range_index_dictionary
 
 
 def get_sex_for_each_id(ids, is_remotely=False):
@@ -2229,7 +2249,6 @@ def print_hi(name):
 ######################################################################################################
 def list_files_with_rr_intervals():
     """Get list of files with rr_intervals time series from rr_interval/all folder"""
-    import os
 
     directory = rr_intervals_folder
 
@@ -2247,12 +2266,9 @@ def extract_from_files_rr_time_series(files):
         input: files - file names
         output: rr_time_series_dictionary - dictionary with id as key and list of RR-intervals as value"""
 
-    import re
-
     rr_time_series_dictionary = {}
 
-    for file in files:
-        filename = file
+    for filename in files:
 
         # Используем регулярное выражение для извлечения числового индекса
         match = re.search(r'_(\d+)\.txt', filename)
@@ -2261,7 +2277,7 @@ def extract_from_files_rr_time_series(files):
             rr_time_series_dictionary[index] = None
             #print("Индекс:", index)
 
-            file_path = rr_intervals_folder + "/" + file
+            file_path = rr_intervals_folder + "/" + filename
             # Чтение файла, начиная со второй строки
             with open(file_path, "r") as file:
                 # Пропускаем первую строку
@@ -2270,18 +2286,12 @@ def extract_from_files_rr_time_series(files):
                 # Читаем остальные строки
                 rr_intervals = [line.strip() for line in file]
 
-            # Вывод значений
-            #for rr in rr_intervals:
-            #    print(rr)
-
             rr_intervals = [int(float(x)) for x in rr_intervals]
-            #print(rr_intervals)
+
             rr_time_series_dictionary[index] = rr_intervals
 
         else:
-            print("Индекс не найден")
-
-    #print(rr_time_series_dictionary)
+            print("Index doesn't found")
 
     return rr_time_series_dictionary
 
@@ -2300,7 +2310,7 @@ def find_minimum_count(rr_time_series_dictionary):
     print(min_len)
 
 
-def check_for_minimum_time_rr_time_intervals(rr_time_series_dictionary, min_time=300000):
+def check_for_minimum_time_rr_time_series(rr_time_series_dictionary, min_time=300000):
     """Check, if summ of RR intervals of time series less than 5 min"""
 
     for key in rr_time_series_dictionary.keys():
@@ -2361,6 +2371,7 @@ def split_rr_intervals_on_train_and_test_datasets(age_ranges_ids_dictionary):
 
     print("Обучающая выборка:", train_data)
     print("Тестовая выборка:", test_data)
+    Warning! If is data less than 2 samples!
     """
 
     from sklearn.model_selection import train_test_split
@@ -2380,6 +2391,8 @@ def split_rr_intervals_on_train_and_test_datasets(age_ranges_ids_dictionary):
 
     # Разделяем внутри каждого возрастного диапазона
     for age_range, ids in data.items():
+        if len (ids) < 2:
+            continue
         #Split list of id's of each age_range in proportion 0.9 / 0.1 train, test size
         train_ids, test_ids = train_test_split(ids, test_size=0.1, random_state=42)
 
@@ -2394,7 +2407,7 @@ def split_rr_intervals_on_train_and_test_datasets(age_ranges_ids_dictionary):
 
 def plot_RR_intervals_time_series(rr_intervals, first_time=40000, second_time=54000):
     """Plot RR intervals time series in the time range"""
-    # Извлекаем RR-интервалы
+    # Extracting RR intervals
 
     print(rr_intervals)
 
@@ -2436,11 +2449,11 @@ def plot_RR_intervals_time_series(rr_intervals, first_time=40000, second_time=54
 
 
 
-def calculate_zigzag_bio_age(male_model_age_range_to_average_HFD, male_test_dataset, male_id_to_hfd):
+def calculate_nearest_hfd_age_category_bio_age(male_model_age_range_to_average_HFD, male_test_dataset, male_id_to_hfd):
 
     MAE = 0
-    for age_range, ids in male_test_dataset.items():
-        age = get_average_age(age_range)
+    for age_range_index, ids in male_test_dataset.items():
+        age = get_average_age(age_range_index)
         for id in ids:
             predicted_age_category = find_nearest_age_category(male_model_age_range_to_average_HFD, male_id_to_hfd[id])
             predicted_age = get_average_age(predicted_age_category)
@@ -2449,17 +2462,122 @@ def calculate_zigzag_bio_age(male_model_age_range_to_average_HFD, male_test_data
     return MAE
     # print(id_to_hfd)
 
-def find_nearest_age_category(male_model_age_range_to_average_HFD, patient_hfd):
+def find_nearest_age_category(model_age_range_to_average_HFD, test_hfd):
 
-    min_diff = 1000
-    min_age_range = male_model_age_range_to_average_HFD.keys()[0]
-    for age_range, hfd in male_model_age_range_to_average_HFD:
-        diff = np.abs(hfd - patient_hfd)
+    min_diff = float('inf')
+    min_age_range = list(model_age_range_to_average_HFD.keys())[0]
+
+    for age_range, hfd in model_age_range_to_average_HFD.items():
+        diff = np.abs(hfd - test_hfd)
         if diff < min_diff:
             min_diff = diff
             min_age_range = age_range
 
     return min_age_range
+
+
+def create_calculated_haracteristics_hrv_tables():
+    
+    # Get list of files with rr_intervals time series
+    filenames = list_files_with_rr_intervals()
+
+    # Extract RR intervals time series from files to dictionary with id as key and RR intervals time series as value
+    rr_time_series_dictionary = extract_from_files_rr_time_series(filenames)
+
+    ###################################################################################################################
+    ########################################## RHYTMOGRAMMA ###########################################################
+    ###################################################################################################################
+
+    #rr_intervals = rr_time_series_dictionary['1083']
+    #plot_RR_intervals_time_series(rr_intervals, first_time=40000, second_time=54000)
+    
+    ###################################################################################################################
+    ###################################################################################################################
+    ###################################################################################################################
+
+    # Find minimum count of rr_intervals in time series of dictionary
+    #find_minimum_count(rr_time_series_dictionary)
+
+    #check_for_minimum_time_rr_time_series(rr_time_series_dictionary, 300000)
+    
+    ## 440 min count, all > 5 min
+    ###################################################################################################################
+    ###################################################################################################################
+    ###################################################################################################################
+    import higuchi_per_age_range as hpar
+    
+    is_plot = True
+    
+    num_k_value = 50
+    k_max_value = None
+
+    
+    k_max_values = range(2, 45, 1)
+   
+    for k_max in k_max_values:
+        preprocessed_dictionary = {}
+
+      
+     
+        # Preprocess each rr_intervals time series
+        for key in rr_time_series_dictionary.keys():
+            preprocessed_dictionary[key] = preprocess_rr_intervals(rr_time_series_dictionary[key])
+            normalized_preprocessed = hpar.zscore_normalize(preprocessed_dictionary[key])
+            # print (len(preprocessed_dictionary[key]))
+            info = [hpar.higuchi_fd(np.array(preprocessed_dictionary[key]), key, 1, num_k_value, is_plot, k_max_value)]
+            hpar.write_HFD_calculated_info_to_csv("both_sexes", 'hrv_ecg', key, info, k_max, None, num_k_value)
+
+
+
+def calculate_result_tables():
+    import higuchi_per_age_range as hpar
+
+    # step_cycle = 50
+    # kmax_list = [10000, 16000, 25000]
+    # kmax = kmax_list[2]
+    # num_k = 50
+    num_k_value = 50
+
+    # create_full_ECG_id_to_info_file(kmax, step_cycle, num_k)
+    methods = ['average', 'median', 'trimmed_mean']
+    method = methods[0]
+    k_max_values = range(2, 45, 1)
+
+    for k_max in k_max_values:
+        # Id to hfd values
+        id_to_hfd = hpar.load_id_to_hfd('both_sexes', k_max, None, num_k_value, method,
+                                        'hrv_AIC_ecg')  # 'average' or 'median'
+
+        keys = id_to_hfd.keys()
+        
+        male_ids, female_ids = classify_ids_by_sex(keys)
+
+        male_id_ageRangeIndex_dict, female_id_ageRangeIndex_dict = get_id_to_age_range_dictionaries_for_male_and_female(keys, male_ids,
+                                                                                                      female_ids, is_remotely=False)
+
+        male_id_to_hfd, female_id_to_hfd = find_male_and_female_id_to_hfd(id_to_hfd, male_ids, female_ids)
+
+        male_age_category_to_ids_dict = get_age_category_to_ids_dictionary(male_id_ageRangeIndex_dict)
+        female_age_category_to_ids_dict = get_age_category_to_ids_dictionary(female_id_ageRangeIndex_dict)
+        
+        #Warning! If is data less than 2 samples!
+        male_train_dataset, male_test_dataset = split_rr_intervals_on_train_and_test_datasets(
+            male_age_category_to_ids_dict)
+        female_train_dataset, female_test_dataset = split_rr_intervals_on_train_and_test_datasets(
+            female_age_category_to_ids_dict)
+
+        male_model_age_range_to_average_HFD = HFD_average_by_age_range(male_train_dataset, male_id_to_hfd)
+        female_model_age_range_to_average_HFD = HFD_average_by_age_range(female_train_dataset, female_id_to_hfd)
+        
+        MAE_male = calculate_nearest_hfd_age_category_bio_age(male_model_age_range_to_average_HFD, male_test_dataset, male_id_to_hfd)
+        MAE_female = calculate_nearest_hfd_age_category_bio_age(female_model_age_range_to_average_HFD, female_test_dataset,
+                                              female_id_to_hfd)
+
+        print("MAE male: {0}".format(MAE_male))
+        print("MAE female: {0}".format(MAE_female))
+        # print(id_to_hfd)
+
+        hpar.write_different_sexes(id_to_hfd, num_k_value, k_max, None, method, 'hrv_AIC_ecg')
 
 if __name__ == '__main__':
 
@@ -2476,7 +2594,7 @@ if __name__ == '__main__':
 
 
 
-    x = np.random.randn(10000)
+    #x = np.random.randn(10000)
     #y = np.empty(9900)
     #for i in range(x.size - 100):
     #    y[i] = np.sum(x[:(i + 100)])
@@ -2488,7 +2606,7 @@ if __name__ == '__main__':
     #hfd.hfd(y)  # ~ 1.50
 
 
-    print_hi('Higuchi!')
+    #print_hi('Higuchi!')
 
 
 
@@ -2541,98 +2659,11 @@ if __name__ == '__main__':
 
     #read_ECGs_annotation_data(False, True)
 
-    import higuchi_per_age_range as hpar
-    """
-    num_k_value = 50
-    k_max_value = None
-
-    
-
-
-    #!!!
-    # Get list of files with rr_intervals time series
-    files = list_files_with_rr_intervals()
-
-    # Extract RR intervals time series from files to dictionary with id as key and RR intervals time series as value
-    rr_time_series_dictionary = extract_from_files_rr_time_series(files)
-
-    ###################################################################################################################
-    ########################################## RHYTMOGRAMMA ###########################################################
-    ###################################################################################################################
-    """
-    """
-    rr_intervals = rr_time_series_dictionary['1083']
-    plot_RR_intervals_time_series(rr_intervals, first_time=40000, second_time=54000)
-    # Извлекаем RR-интервалы
 
 
 
-    ###!!!
-    is_plot = False
-    ###################################################################################################################
 
-    #Find minimum count of rr_intervals in time series of dictionary
-    find_minimum_count(rr_time_series_dictionary)
-
-    check_for_minimum_time_rr_time_intervals(rr_time_series_dictionary, 300000)
-    #k_max_values = range(2, 45, 1)
-    k_max_values = range(20, 21, 1)
-    # 440 min count, all > 5 min
-    for k_max in k_max_values:
-        preprocessed_dictionary = {}
-
-        num_k_value=50
-        #k_max_value = 44
-        # Preprocess each rr_intervals record
-        for key in rr_time_series_dictionary.keys():
-            preprocessed_dictionary[key] = preprocess_rr_intervals(rr_time_series_dictionary[key])
-            normalized_preprocessed = hpar.zscore_normalize(preprocessed_dictionary[key])
-            #print (len(preprocessed_dictionary[key]))
-            info = [hpar.higuchi_fd(np.array(preprocessed_dictionary[key]), key, 1, num_k_value, is_plot, k_max_value)]
-            hpar.write_HFD_calculated_info_to_csv("both_sexes", 'hrv_ecg', key, info, k_max, None, num_k_value)
-
-    """
-    #step_cycle = 50
-    #kmax_list = [10000, 16000, 25000]
-    #kmax = kmax_list[2]
-    #num_k = 50
-    num_k_value = 50
-    k_max_value = 44
-    #create_full_ECG_id_to_info_file(kmax, step_cycle, num_k)
-    methods = ['average', 'median', 'trimmed_mean']
-    method = methods[0]
-    k_max_values = range(20, 21, 1)
-    num_k_value = 50
-    for k_max in k_max_values:
-        #Id to hfd values
-        id_to_hfd = hpar.load_id_to_hfd('both_sexes', k_max, None, num_k_value, method, 'hrv_AIC_ecg')  # 'average' or 'median'
-
-        keys = id_to_hfd.keys()
-        male_ids, female_ids = classify_ids_by_sex(keys)
-
-        print(male_ids)
-        print(female_ids)
-
-        male_id_ageRangeIndex_dict, female_id_ageRangeIndex_dict = get_age_ranges_for_male_and_female(keys, male_ids,
-                                                                         female_ids)
-
-
-        male_id_to_hfd, female_id_to_hfd = find_male_and_female_id_to_hfd(id_to_hfd, male_ids, female_ids)
-
-        male_age_category_to_ids_dict = get_age_category_to_ids_dictionary(male_id_ageRangeIndex_dict)
-        male_train_dataset, male_test_dataset = split_rr_intervals_on_train_and_test_datasets(male_age_category_to_ids_dict)
-
-
-        male_model_age_range_to_average_HFD = male_HFD_average_by_age_range(male_train_dataset, male_id_to_hfd)
-        MAE = calculate_zigzag_bio_age(male_model_age_range_to_average_HFD, male_test_dataset, male_id_to_hfd)
-        print(MAE)
-        #print(id_to_hfd)
-
-        #hpar.write_different_sexes(id_to_hfd, num_k_value, k_max, None, method, 'hrv_AIC_ecg')
-
-
-
-    """"""
+    """""""""
 
 
 
@@ -2645,7 +2676,7 @@ if __name__ == '__main__':
 
     """
 
-    #check_for_minimum_time_rr_time_intervals(rr_time_series_dictionary)
+    #check_for_minimum_time_rr_time_series(rr_time_series_dictionary)
     """
 
 
@@ -2739,7 +2770,7 @@ if __name__ == '__main__':
 
     hfd = calculate_higuchi(record[0],record[1])
     print(hfd)
-    """
+    
     #read_ECG_data(1057346, TypeOfECGCut.full, 3)
     #open_record('0637', 0, 480501)
     #number_of_ECG_by_each_age_group()
@@ -2749,7 +2780,7 @@ if __name__ == '__main__':
     #print(h)
 
 
-
+    """
     ################################################################################################################
 
 
