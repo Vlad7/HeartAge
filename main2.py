@@ -822,7 +822,7 @@ def extract_age_ranges_from_annotation_file (ids, is_remotely=False):
 
             # Row[0] - id of record, row[1] - age range in index form
             if row[0] in ids:
-                age_ranges_dictionary[row[0]] = row[1]
+                id_to_age_range_index_dictionary[row[0]] = row[1]
 
     return id_to_age_range_index_dictionary
 
@@ -2580,9 +2580,7 @@ def calculate_result_tables():
         hpar.write_different_sexes(id_to_hfd, num_k_value, k_max, None, method, 'hrv_AIC_ecg')
 
 if __name__ == '__main__':
-
-
-
+    calculate_result_tables()
     #myarray = np.fromfile("D:/Projects/ECGHiguchi/mit-bih-arrhythmia-database-1.0.0/101.dat", dtype=float)
 
     #for i in range (0, len(myarray)):
@@ -2679,7 +2677,7 @@ if __name__ == '__main__':
     #check_for_minimum_time_rr_time_series(rr_time_series_dictionary)
     """
 
-
+    """
 
     # Пример RR-интервалов (синтетические данные, реальные данные можно загрузить из файла)
     #np.random.seed(42)
