@@ -21,18 +21,18 @@ import numpy as np
 import HiguchiFractalDimension.hfd
 import main2 as m2
 
-import re
+
 import os
 
 import csv
 from collections import defaultdict
-import matplotlib.pyplot as plt
+
 from sklearn.metrics import r2_score
 import numpy as np
 from scipy import stats
 import statsmodels.api as sm
 from statsmodels.stats.diagnostic import linear_reset
-
+import ecg_enums as ee
 
 
 #<<<<<<< HEAD
@@ -53,7 +53,7 @@ import bwr
 import pan_tompkins as pt
 
 import neurokit2 as nk
-
+import rr_intervals_time_series as rits
 
 
 
@@ -204,8 +204,47 @@ def print_database():
 
 
 #######################################################################################################################
+##################################################### GENDER ##########################################################
 #######################################################################################################################
-#######################################################################################################################
+
+def get_sex_for_each_id(ids, is_remotely=False):
+    """Get id's list for each sex
+
+        input:
+            is_remotely - load annotation file from the internet
+
+        output:
+
+            lists of id's for men and women accordingly
+    """
+
+    sex_dictionary = {}
+
+    # Check, if dataset is remotely located
+    if is_remotely:
+        path = csv_info_file
+    else:
+        path = path_to_dataset_folder + '/' + csv_info_file
+
+    with open(path) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+
+        # Get first raw with attributes
+        first_row = next(csv_reader)
+
+        # Setting counter for first row
+        line_count = 1
+
+        # We are processing the remaining rows
+        for row in csv_reader:
+
+            # Row[0] - id of record, row[1] - age range in index form
+            if row[0] in ids:
+                sex_dictionary[row[0]] = row[2]
+
+            line_count += 1
+
+    return sex_dictionary
 
 def classify_ids_by_sex(keys):
     """Get information about sex method
@@ -233,6 +272,10 @@ def classify_ids_by_sex(keys):
     print("Female:", female_list)
 
     return male_list, female_list
+
+###################################################################################################
+###################################################################################################
+###################################################################################################
 
 def get_age_id_to_age_range_dictionary(ids, is_remotely):
     """Get age ranges for male and female"""
@@ -827,44 +870,7 @@ def extract_age_ranges_from_annotation_file (ids, is_remotely=False):
     return id_to_age_range_index_dictionary
 
 
-def get_sex_for_each_id(ids, is_remotely=False):
-    """Get id's list for each sex
 
-        input:
-            is_remotely - load annotation file from the internet
-
-        output:
-
-            lists of id's for men and women
-    """
-
-    sex_dictionary = {}
-
-    # Check, if dataset is remotely located
-    if is_remotely:
-        path = csv_info_file
-    else:
-        path = path_to_dataset_folder + '/' + csv_info_file
-
-    with open(path) as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=',')
-
-        # Get first raw with attributes
-        first_row = next(csv_reader)
-
-        # Setting counter for first row
-        line_count = 0
-
-        # We are processing the remaining rows
-        for row in csv_reader:
-            line_count += 1
-
-            # Row[0] - id of record, row[1] - age range in index form
-            if row[0] in ids:
-                sex_dictionary[row[0]] = row[2]
-
-
-    return sex_dictionary
 
 def get_ids_of_sex_from_sexes_dictionary(sex_dictionary):
     """From dictionary with ages as keys and age ranges as values get new dictionary with
@@ -1407,7 +1413,7 @@ def open_record(id, min_point, max_point, remotely):
     #print(sequence)
 
     create_breaks_file(sequence_1, sequence_2)
-    #wfdb.plot_wfdb(record, channels=[0], title='Record ' + id + ' from Physionet Autonomic ECG')
+    wfdb.plot_wfdb(record, title='Record ' + id + ' from Physionet Autonomic ECG')
 
     # Проверяем, есть ли сигнал
     if record.p_signal is not None:
@@ -2247,107 +2253,9 @@ def print_hi(name):
 ######################################################################################################
 ################################### LOAD RR-INTERVALS TIME SERIES ####################################
 ######################################################################################################
-def list_files_with_rr_intervals():
-    """Get list of files with rr_intervals time series from rr_interval/all folder"""
-
-    directory = rr_intervals_folder
-
-    # Фильтрация только файлов
-    files = [file for file in os.listdir(directory) if os.path.isfile(os.path.join(directory, file))]
-
-    for file in files:
-        print(file)
-
-    return files
-
-def extract_from_files_rr_time_series(files):
-    """Extract from files RR intervals time series
-
-        input: files - file names
-        output: rr_time_series_dictionary - dictionary with id as key and list of RR-intervals as value"""
-
-    rr_time_series_dictionary = {}
-
-    for filename in files:
-
-        # Используем регулярное выражение для извлечения числового индекса
-        match = re.search(r'_(\d+)\.txt', filename)
-        if match:
-            index = match.group(1)
-            rr_time_series_dictionary[index] = None
-            #print("Индекс:", index)
-
-            file_path = rr_intervals_folder + "/" + filename
-            # Чтение файла, начиная со второй строки
-            with open(file_path, "r") as file:
-                # Пропускаем первую строку
-                next(file)
-
-                # Читаем остальные строки
-                rr_intervals = [line.strip() for line in file]
-
-            rr_intervals = [int(float(x)) for x in rr_intervals]
-
-            rr_time_series_dictionary[index] = rr_intervals
-
-        else:
-            print("Index doesn't found")
-
-    return rr_time_series_dictionary
 
 
 
-
-
-def find_minimum_count(rr_time_series_dictionary):
-    """Find minimum count of rr-intervals in lists of dictionary values"""
-    # Find minimum len of rr_time_series
-    min_len = 1000000
-    for id in rr_time_series_dictionary.keys():
-        ln = len(rr_time_series_dictionary[id])
-        if ln < min_len:
-            min_len = ln
-    print(min_len)
-
-
-def check_for_minimum_time_rr_time_series(rr_time_series_dictionary, min_time=300000):
-    """Check, if summ of RR intervals of time series less than 5 min"""
-
-    for key in rr_time_series_dictionary.keys():
-        summ = np.sum(rr_time_series_dictionary[key])
-        if summ < min_time:
-            print("Record of time series less than 5 minutes!")
-
-def preprocess_rr_intervals(rr_intervals, mode="fixed_count", count=440, duration=300000):
-    """
-    Preprocessing of RR-intervals: selecting fixed number of points or time interval. Maybe for future add different
-    methods for cut.
-
-    :param rr_intervals: массив RR-интервалів (в мс)
-    :param mode: "fixed_count" (фіксована кількість) или "fixed_duration" (фіксована тривалість)
-    :param count: кількість RR-интервалів (наприклад, 500)
-    :param duration: тривалість аналізу в мс (наприклад, 300000 мс = 5 хвилин)
-    :return: опрацьований масив RR-интервалів
-    """
-    rr_intervals = np.array(rr_intervals)  # Перетворюэмо в массив numpy
-    avg_rr = np.mean(rr_intervals)  # Середній RR-інтервал
-    hr = 60000 / avg_rr  # ЧСС (уд/хв)
-
-    print(f"Середній RR-інтервал: {avg_rr:.2f} мс, ЧСС: {hr:.2f} уд/мин")
-
-    if mode == "fixed_count":
-        print("Всього: "+str(len(rr_intervals)))
-        print(f"Вибрано {count} RR-интервалов")
-        return rr_intervals[:count]  # Беремо перші count точок
-
-    elif mode == "fixed_duration":
-        total_time = np.cumsum(rr_intervals)  # Суммируем RR-интервалы
-        valid_indices = np.where(total_time <= duration)[0]  # Ищем точки, укладывающиеся в duration
-        print(f"Выбрано {len(valid_indices)} RR-интервалов (на {duration / 1000} секунд)")
-        return rr_intervals[valid_indices]  # Возвращаем только эти точки
-
-    else:
-        raise ValueError("Неверный режим. Используйте 'fixed_count' или 'fixed_duration'.")
 
 def split_rr_intervals_on_train_and_test_datasets(age_ranges_ids_dictionary):
 
@@ -2405,47 +2313,7 @@ def split_rr_intervals_on_train_and_test_datasets(age_ranges_ids_dictionary):
 
     return train_data, test_data
 
-def plot_RR_intervals_time_series(rr_intervals, first_time=40000, second_time=54000):
-    """Plot RR intervals time series in the time range"""
-    # Extracting RR intervals
 
-    print(rr_intervals)
-
-    # Создаём массив накопленного времени
-    cumulative_time = np.cumsum(rr_intervals)  # массив накопленного времени (в мс)
-
-    print(cumulative_time)
-
-    # Определяем индексы RR-интервалов в диапазоне 40-52 секунды (40000-52000 мс)
-    start_idx = np.searchsorted(cumulative_time, first_time)  # первый индекс
-    end_idx = np.searchsorted(cumulative_time, second_time)  # последний индекс
-    # Отбираем данные для построения графика
-    filtered_rr = rr_intervals[start_idx:end_idx]
-    filtered_time = cumulative_time[start_idx:end_idx]
-    # print(filtered_time)
-
-    # Создаём ось X (по номеру R-R)
-    filtered_numbers = list(range(start_idx + 1, end_idx + 1)) # + 1 поскольку натуральные числа, нумеруется от 1
-    print(filtered_numbers)
-    # Для графика создадим массив с метками времени, который соответствует каждому интервалу
-    # Так как частота дискретизации 1000 Гц, то временная ось будет с шагом 1 мс
-    sampling_rate = 1000
-    print(len(rr_intervals))
-    # time_axis = [i / sampling_rate for i in range(len(rr_intervals))]  # временные метки с шагом 1 мс
-    #number_axis = [i + 1 for i in range(len(rr_intervals))]
-    print(filtered_numbers)
-    # print(number_axis)
-    # Строим график
-    plt.figure(figsize=(10, 6))
-    plt.plot(filtered_numbers, filtered_rr, marker='o', color='b', linestyle='-', label='RR-intervals')
-    plt.title('RR intervals')
-    plt.xlabel('N (R-R)')
-    plt.ylabel('RR-interval (ms)')
-    # Устанавливаем метки на оси X через 1
-    plt.xticks(filtered_numbers)  # Устанавливаем все числа в качестве подписей
-    plt.grid(True)
-    plt.legend()
-    plt.show()
 
 
 
@@ -2476,61 +2344,12 @@ def find_nearest_age_category(model_age_range_to_average_HFD, test_hfd):
     return min_age_range
 
 
-def create_calculated_haracteristics_hrv_tables():
-    
-    # Get list of files with rr_intervals time series
-    filenames = list_files_with_rr_intervals()
-
-    # Extract RR intervals time series from files to dictionary with id as key and RR intervals time series as value
-    rr_time_series_dictionary = extract_from_files_rr_time_series(filenames)
-
-    ###################################################################################################################
-    ########################################## RHYTMOGRAMMA ###########################################################
-    ###################################################################################################################
-
-    #rr_intervals = rr_time_series_dictionary['1083']
-    #plot_RR_intervals_time_series(rr_intervals, first_time=40000, second_time=54000)
-    
-    ###################################################################################################################
-    ###################################################################################################################
-    ###################################################################################################################
-
-    # Find minimum count of rr_intervals in time series of dictionary
-    #find_minimum_count(rr_time_series_dictionary)
-
-    #check_for_minimum_time_rr_time_series(rr_time_series_dictionary, 300000)
-    
-    ## 440 min count, all > 5 min
-    ###################################################################################################################
-    ###################################################################################################################
-    ###################################################################################################################
-    import higuchi_per_age_range as hpar
-    
-    is_plot = True
-    
-    num_k_value = 50
-    k_max_value = None
-
-    
-    k_max_values = range(2, 45, 1)
-   
-    for k_max in k_max_values:
-        preprocessed_dictionary = {}
-
-      
-     
-        # Preprocess each rr_intervals time series
-        for key in rr_time_series_dictionary.keys():
-            preprocessed_dictionary[key] = preprocess_rr_intervals(rr_time_series_dictionary[key])
-            normalized_preprocessed = hpar.zscore_normalize(preprocessed_dictionary[key])
-            # print (len(preprocessed_dictionary[key]))
-            info = [hpar.higuchi_fd(np.array(preprocessed_dictionary[key]), key, 1, num_k_value, is_plot, k_max_value)]
-            hpar.write_HFD_calculated_info_to_csv("both_sexes", 'hrv_ecg', key, info, k_max, None, num_k_value)
 
 
 
 def calculate_result_tables():
     import higuchi_per_age_range as hpar
+    import ecg_enums as ee
 
     # step_cycle = 50
     # kmax_list = [10000, 16000, 25000]
@@ -2543,10 +2362,12 @@ def calculate_result_tables():
     method = methods[0]
     k_max_values = range(2, 45, 1)
 
+
     for k_max in k_max_values:
         # Id to hfd values
-        id_to_hfd = hpar.load_id_to_hfd('both_sexes', k_max, None, num_k_value, method,
-                                        'hrv_AIC_ecg')  # 'average' or 'median'
+        id_to_hfd = hpar.load_id_to_hfd(ee.Dataset.ukraine, ee.Gender.both_sexes, k_max, None, num_k_value, method,
+                                        ee.TypeOfTimeSeries.hrv_AIC_ecg)  # 'average' or 'median'
+
 
         keys = id_to_hfd.keys()
         
@@ -2580,7 +2401,8 @@ def calculate_result_tables():
         hpar.write_different_sexes(id_to_hfd, num_k_value, k_max, None, method, 'hrv_AIC_ecg')
 
 if __name__ == '__main__':
-    calculate_result_tables()
+    read_ECGs_annotation_data(False, True)
+    #calculate_result_tables()
     #myarray = np.fromfile("D:/Projects/ECGHiguchi/mit-bih-arrhythmia-database-1.0.0/101.dat", dtype=float)
 
     #for i in range (0, len(myarray)):

@@ -466,6 +466,441 @@ def read_ECGs_annotation_data(is_remotely, except_breaked):
                     writer.writerows(ecg_attributes)
                 """
 
+"""import wfdb
+from wfdb import processing
+
+path_to_dataset_folder = 'D:/SCIENCE/Datasets/autonomic-aging-a-dataset-to-quantify-changes-of-cardiovascular-autonomic-function-during-healthy-aging-1.0.0'
+
+sig, fields = wfdb.rdsamp(r'{0}/0001'.format(path_to_dataset_folder), channels=[0])
+xqrs = processing.XQRS(sig=sig[:,0], fs=fields['fs'])
+xqrs.detect()
+wfdb.plot_items(signal=sig, ann_samp=[xqrs.qrs_inds])
+"""
+import wfdb
+import csv
+import os
+import numpy as np
+from biosppy.signals import ecg
+import matplotlib.pyplot as plt
+from statistics import mean
+
+from neurokit2 import rsp_amplitude
+from wfdb import processing
+import neurokit2 as nk
+import pandas as pd
+
+path_to_dataset_folder = 'D:/SCIENCE/Datasets/autonomic-aging-a-dataset-to-quantify-changes-of-cardiovascular-autonomic-function-during-healthy-aging-1.0.0'
+#path_to_dataset_folder  = 'C:/Datasets/autonomic-aging-a-dataset-to-quantify-changes-of-cardiovascular-autonomic-function-during-healthy-aging-1.0.0'
+
+csv_info_file = 'subject-info.csv'
+
+rr_intervals_folder="rr_intervals/all"
+
+DATABASE_ATTRIBUTES = []
+
+age_groups = {'NaN': 'none',
+              '1': '18 - 19',
+                  '2': '20 - 24',
+                  '3': '25 - 29',
+                  '4': '30 - 34',
+                  '5': '35 - 39',
+                  '6': '40 - 44',
+                  '7': '45 - 49',
+                  '8': '50 - 54',
+                  '9': '55 - 59',
+                  '10': '60 - 64',
+                  '11': '65 - 69',
+                  '12': '70 - 74',
+                  '13': '75 - 79',
+                  '14': '80 - 84',
+                  '15': '85 - 92',
+                  }
+
+def breaked_ECGs():
+    """ECG's with breakes (empties in ECG line)"""
+
+    # Id's of breacked first ecg's
+    breaked_first_ecg_ids = []
+    # Id's of breacked second ecg's
+    breaked_second_ecg_ids = []
+
+    with open('breaked_list/breaked_first_ecg.txt', 'r', encoding='utf-8') as file:
+        for str in file:
+            breaked_first_ecg_ids.append(str.strip())  # strip - remove spaces and '\n'
+
+    with open('breaked_list/breaked_second_ecg.txt', 'r', encoding='utf-8') as file:
+        for str in file:
+            breaked_second_ecg_ids.append(str.strip())
+
+    print("Breaked_first_ecg_ids: ", breaked_first_ecg_ids)
+    print("Breaked_second_ecg_ids: ", breaked_second_ecg_ids)
+
+    return breaked_first_ecg_ids, breaked_second_ecg_ids
+
+
+def sets_with_breaked_ECGs(breaked_first_ecg_ids, breaked_second_ecg_ids):
+    """General for two ECG's and unique of each ECG"""
+
+    # General for two lists
+    general = list(set(breaked_first_ecg_ids) & set(breaked_second_ecg_ids))  # Пересечение множеств
+    general.sort()
+    print("General: ", general)
+
+    first_unique = list(set(breaked_first_ecg_ids) - set(general))  # First unique from general
+    second_unique = list(set(breaked_second_ecg_ids) - set(general))  # Second unique from general
+    first_unique.sort()
+    second_unique.sort()
+    print("First unique: ", first_unique)
+    print("Second unique: ", second_unique)
+
+    return general, first_unique, second_unique
+
+def open_record_wfdb(id, min_point, max_point,   remotely):
+    """Open record with wfdb"""
+    record = None
+
+    if remotely:
+        record = wfdb.rdrecord(id, min_point, max_point, [0, 1], pn_dir='autonomic-aging-cardiovascular')
+    else:
+        record = wfdb.rdrecord(
+            path_to_dataset_folder + '/' + id, min_point, max_point, [0, 1])
+
+    return record
+
+#######################################################################################################################
+#################################### EXTRACTING RR INTERVALS ##########################################################
+#######################################################################################################################
+def extract_cleaned_signal_and_R_peaks(signal, sampling_rate, show_graphics):
+    """BIO SPPY library for extracting cleaned signal and R-peaks from ECG signal
+        input:
+            signal - ECG signal
+            sampling_rate - sampling_rate
+            show_graphics - show graphics
+
+        output:
+
+            filtered_signal, r_peaks - filtered signal and R peaks time series
+
+    """
+
+    # signal, mdata = storage.load_txt('./examples/ecg.txt')
+
+    # Додання 500 відліків зліва та справа для коректного подальшого розпізнання R-піків
+    extended_signal = np.pad(signal, (500, 500), mode='edge')
+
+    # Для фільтрації ЕКГ, виявлення R-піків та побудови графіків використовується бібліотека biosppy
+    out = ecg.ecg(signal=extended_signal, sampling_rate=sampling_rate, show=show_graphics)
+
+    # Відфільтрований сигнал
+    filtered_extended = out['filtered']
+
+    # Відступаємо від початку 500 і від кінця 500 (обернена операція до np.pad)
+    # Чомусь на графіку в точці 500 не співпадає з початком обрізаного.
+    filtered_original = filtered_extended[500:-500]
+
+
+    ################################ PRINT CLEANED SIGNAL ############################################
+
+    #Maybe error!
+    print("CLEANED SIGNAL:")
+    print(filtered_original)
+
+    ###################################################################################################
+
+    # Отримання індексів R-піків
+    r_peaks = out['rpeaks']
+
+    # Відступаємо назад на 500 для індексів R-піків (обернена операція до np.pad)
+    r_peaks = r_peaks - 500
+
+    # Дополнительно: сохранение в файл
+    #np.savetxt("rr_peaks/peaks_{0}.txt".format(id), r_peaks,
+    #           header="Peaks (ms)", comments='', fmt="%.6f")
+
+    return filtered_original, r_peaks
+
+def calculate_RR_intervals(id, r_peaks):
+    """Calculate and save RR-intervals time series for each id
+        input:
+            id - id of record
+            r_peaks - time series of r_peaks
+    """
+    # Вычисляем R-R интервалы (в милисекундах)
+    # rr_intervals = np.diff(r_peaks)
+
+    # np.savetxt("rr_intervals/rr_intervals_{0}.txt".format(id), rr_intervals,
+    #           header="RR Intervals (ms)", comments='', fmt="%.6f")
+
+def open_record(id, min_point, max_point, remotely):
+
+    """ Open each record with ECGs by Id
+
+        Input parameters:
+            - Id - id of record
+            - min_point - minimum point, at which starts ECG (including this point)
+            - max_point - maximum point, at which ends ECG (not including this point)
+
+        Output parameters:
+            - [sequence_1, sequence_2] - list with sequence_1 for first ECG and sequence_2 for second ECG
+
+            Describing:
+                wfdb.rdrecord(path + '/' + id, min_point, max_point, [0, 1])
+
+                min_point = 0 - The starting sample number to read for all channels
+                                (point from what graphic starts (min_point)).
+
+                max_point = None - The sample number at which to stop reading for all
+                channels (max_point). Reads the entire duration by default.
+
+                [0, 1] - first two channels (ECG 1, ECG 2); [0] - only first ECG.
+            """
+
+    record = None
+
+    if min_point < 0:
+        print("Too low minimal point of ECG! Now minimal point is 0!")
+        min_point = 0
+
+    if os.path.isfile(path_to_dataset_folder + '/' + id + '.hea') or os.path.isfile(path_to_dataset_folder + '/' + id + '.dat'):
+        try:
+            record = open_record_wfdb(id, min_point, max_point, remotely)
+
+        except:
+            max_point = None
+            record = open_record_wfdb(id, min_point, max_point, remotely)
+            print("Too hight maximal point of ECG! Now maximal point is None!")
+    else:
+        print("File with record doesn't exist!")
+        return None
+
+    #display(record.__dict__)
+
+
+    sequence_1 = []
+    sequence_2 = []
+
+
+    # print(record.p_signal)
+
+    for x in record.p_signal:
+
+        # Use first ECG
+        sequence_1.append(x[0])
+
+        # Use second ECG
+        sequence_2.append(x[1])
+
+
+    print("Length of first ECG with id {0}: {1}".format(id, str(len(sequence_1))))
+    print("Length of second ECG with id {0}: {1}".format(id, str(len(sequence_2))))
+
+
+    return [sequence_1, sequence_2]
+
+def read_ECG():
+    """ Open csv info file, print header and information for each record.
+
+        input: is_remotely - download annotation file and record remotely from internet
+
+    """
+
+    name = "Голобородько Ніна 2"
+    # Path to CSV file
+    path = r"D:\Projects\ECG-solveig\ECG solveig\ECG data\ECG\145 files of ECG from 2023 year with surnames\{0}\ECG.csv".format(name)
+
+    data = np.loadtxt(path, delimiter=";")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # Signal with first ECG
+    ecg_signal = np.array(data)
+
+    # Частота дискретизації
+    sampling_rate = 1000
+
+    #To show graphics
+    show_graphics = True
+
+    # Filter signal to cleaned and detect r_peaks
+    cleaned_signal, r_peaks = extract_cleaned_signal_and_R_peaks(ecg_signal,
+                                               sampling_rate, show_graphics)
+
+    # Calculate the differences between consecutive R-peak indices (in samples)
+    r_peak_differences = np.diff(r_peaks)
+
+    path = r"D:\Projects\ECG-solveig\ECG solveig\ECG data\ECG\145 files of ECG from 2023 year with surnames\{0}\rr_intervals.txt".format(name)
+
+    # Specify the filename
+    filename = 'rr_intervals.txt'
+
+    # Save the array. '%.4f' formats the numbers to 4 decimal places.
+    # 'delimiter' specifies the separation between numbers (here, a newline '\n').
+    np.savetxt(
+        path,
+        r_peak_differences,
+        fmt='%.4f',
+        delimiter='\n',
+        header='RR-Intervals (miliseconds)',
+        comments=''  # Remove the '#' that usually precedes the header
+    )
+
+    print(f"RR-интервалы сохранены в файл '{filename}'.")
+    ########################## Візуалізація відфільтрованого сигналу з R-піками ###########################
+
+    if (show_graphics):
+        print(cleaned_signal)
+        print("Signal length:", len(cleaned_signal))
+
+        print("First and last R-peaks:", r_peaks[0], r_peaks[-1])
+
+        import matplotlib.pyplot as plt
+        print(f"R-peaks: {r_peaks}")
+        print(f"Cleaned signal length: {len(cleaned_signal)}")
+        plt.plot(cleaned_signal)
+
+        valid_r_peaks = r_peaks[r_peaks < len(cleaned_signal)]
+
+        plt.scatter(valid_r_peaks, cleaned_signal[valid_r_peaks], color='red')
+        plt.show()
+
+        #######################################################################################################
+
+        import biosppy
+
+        # Обробка ЕКГ
+        #out = biosppy.signals.ecg.ecg(signal=ecg_signal, sampling_rate=500, show=True)
+        #t = biosppy.signals.ecg.getTPositions(ecg_proc=out, show=True)
+        # R-пики: out['rpeaks']
+
+        #for x in t[2]:
+        #    print(x)
+
+        # Margin 200 for correct delineation
+        margin = 200  # or adjust based on your delineation window size
+        valid_r_peaks = r_peaks[(r_peaks > margin) & (r_peaks < len(cleaned_signal) - margin)]
+
+
+        # Next, use NeuroKit for P, Q, S, T (around R)
+        # Delineate the ECG signal using neurokit2, cwt with hight precision, for quicker use dwt
+        _, waves_peaks = nk.ecg_delineate(cleaned_signal, valid_r_peaks,
+                                         sampling_rate=sampling_rate, method="cwt", show=show_graphics)
+
+
+        isoline, waves, features = calculate_ECG_features(cleaned_signal, r_peaks, waves_peaks)
+
+        #waves, features = calculate_ECG_features(cleaned_signal, r_peaks, waves_peaks)
+
+
+
+        id = row[0]
+        age_category = row[1]
+
+        if row[2] == '0':
+            #ECG dictionary with id as key and list as value with age category, sex, ECG features
+            write_ECG_parameters_to_csv('male', id, age_category, features)
+
+        if row[2] == '1':
+            # ECG dictionary with id as key and list as value with age category, sex, ECG features
+            write_ECG_parameters_to_csv('female', id, age_category, features)
+
+        # Припустимо, ми аналізуємо перші тридцять серцевих циклів на графіку:
+
+        count_plot = 100
+        if show_graphics:
+            cleaned_signal = cleaned_signal - isoline
+            plot_ECG_features(cleaned_signal, waves, count_plot)
+
+
+
+
+
+
+
+
+
+
+        """
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+
+        plt.figure(figsize=(12, 4))
+        plt.plot(time, ecg_signal, label="ECG")
+        plt.scatter(time[r_peaks], ecg_signal[r_peaks], color='red', label="R-peaks")
+        plt.xlabel("Time (s)")
+        plt.ylabel("Amplitude")
+        plt.title("ECG with R-peaks")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+
+        # === Отобразим
+        nk.ecg_plot(signals)
+        plt.show()"""
+        """
+        import neurokit2 as nk
+        import matplotlib.pyplot as plt
+
+        # 1. Генеруємо синтетичний ЕКГ-сигнал
+        #signal = nk.ecg_simulate(duration=10, sampling_rate=1000)
+
+        # 2. Аналіз сигналу: виявлення компонентів (P, QRS, T)
+        ecg_signals, info = nk.ecg_process(signal, sampling_rate=1000)
+
+        # 3. Отримання індексів початку і кінця компонентів
+        r_peaks = info["ECG_R_Peaks"]
+        p_peaks = info["ECG_P_Peaks"]
+        t_peaks = info["ECG_T_Peaks"]
+
+        # 4. Візуалізація
+        plt.figure(figsize=(15, 5))
+        plt.plot(ecg_signals["ECG_Clean"], label="ECG Signal")
+
+        # Позначимо точки на графіку
+        plt.scatter(p_peaks, ecg_signals["ECG_Clean"][p_peaks], color="green", label="P peaks")
+        plt.scatter(r_peaks, ecg_signals["ECG_Clean"][r_peaks], color="red", label="R peaks")
+        plt.scatter(t_peaks, ecg_signals["ECG_Clean"][t_peaks], color="purple", label="T peaks")
+
+        plt.title("ЕКГ-сигнал з позначеними P, R, T")
+        plt.xlabel("Час (мс)")
+        plt.ylabel("Амплітуда")
+        plt.legend()
+        plt.grid()
+        plt.show()
+        """
+        # Частота дискретизації
+        #sampling_rate = 1000
+
+        #r_peaks, rr_intervals = extract_cleaned_signal_and_R_peaks(signal, sampling_rate, row[0])
+
+        """
+        import csv
+
+        ecg_attributes = [
+            {"time": 0.0, "amplitude": 0.1, "heart_rate": 75},
+            {"time": 0.01, "amplitude": 0.12, "heart_rate": 75},
+            {"time": 0.02, "amplitude": 0.14, "heart_rate": 76},
+            # и так далее...
+        ]
+
+        with open("ecg_data.csv", mode="w", newline="") as file:
+            writer = csv.DictWriter(file, fieldnames=["time", "amplitude", "heart_rate"])
+            writer.writeheader()
+            writer.writerows(ecg_attributes)
+        """
+
 
 import numpy as np
 import scipy.signal as signal
@@ -1227,6 +1662,6 @@ def write_ECG_parameters_to_csv(sex, id, age_range, features):
 
 
 
-read_ECGs_annotation_data(False, True)
-
+#read_ECGs_annotation_data(False, True)
+read_ECG()
 
